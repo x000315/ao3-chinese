@@ -564,6 +564,7 @@ const I18N = {
                 'No, Go Back': '否，返回',
                 'Work successfully deleted from your history.': '该作品已成功从您的历史记录中删除。',
                 'Your history is now cleared.': '您的历史记录已清除。',
+                'You are already signed in.': '您已登录。',
             },
             'innerHTML_regexp': [
 
