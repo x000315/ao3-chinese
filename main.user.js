@@ -253,6 +253,10 @@
         if (document.querySelector('ul.media.fandom.index.group')) return 'media_index';
         if (document.querySelector('div#main.owned_tag_sets-show')) return 'owned_tag_sets_show';
         const { hostname, pathname, search } = window.location;
+        // 忽略 /first_login_help 页面
+        if (pathname.startsWith('/first_login_help')) {
+            return false;
+        }
         if (pathname === '/abuse_reports/new' || pathname === '/support') return 'report_and_support_page';
         if (pathname === '/known_issues') return 'known_issues_page';
         if (pathname === '/tos') return 'tos_page';
@@ -266,7 +270,7 @@
         if (pathname === '/site_map') return 'site_map';
         if (pathname.startsWith('/wrangling_guidelines')) return 'wrangling_guidelines_page';
         if (pathname === '/donate') return 'donate_page';
-        if (pathname === '/faq') return 'faq_page';
+        if (pathname.startsWith('/faq')) return 'faq_page';
         if (pathname === '/help/skins-basics.html') return 'help_skins_basics';
         if (pathname === '/help/tagset-about.html') return 'help_tagset_about';
         if (pathname === '/tag_sets') return 'tag_sets_index';
