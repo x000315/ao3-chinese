@@ -2,7 +2,7 @@
 // @name         AO3 汉化插件
 // @namespace    https://github.com/V-Lipset/ao3-chinese
 // @description  中文化 AO3 界面，可调用 ChatGLM 实现简介、注释、评论以及全文翻译。
-// @version      1.0.0-2025-06-29
+// @version      1.0.0-2025-07-01
 // @author       V-Lipset
 // @license      GPL-3.0
 // @match        https://archiveofourown.org/*

@@ -2,7 +2,7 @@
 // @name         AO3 汉化插件
 // @namespace    https://github.com/V-Lipset/ao3-chinese
 // @description  中文化 AO3 界面，可调用 ChatGLM 实现简介、注释、评论以及全文翻译。
-// @version      1.0.0-2025-06-29
+// @version      1.0.0-2025-07-01
 // @author       V-Lipset
 // @license      GPL-3.0
 // @match        https://archiveofourown.org/*
@@ -42,7 +42,7 @@
         // 文本分块与请求限流的配置
         CHUNK_SIZE: 1200, // 每次请求最大文本长度
         PARAGRAPH_LIMIT: 4,   // 每次请求最大段落数
-        REQUEST_DELAY: 200, // 每次API请求之间的延迟（毫秒），1000/200 = 5次/秒，低于10次的限制
+        REQUEST_DELAY: 200, // 每次API请求之间的延迟（毫秒）
 
         transEngine: 'chatglm_official',
         TRANS_ENGINES: {
@@ -65,8 +65,8 @@
                     } catch (e) { /* 忽略格式错误的词典 */ }
 
                     // 应用System Prompt和Prompt模板
-                    const system_prompt = `You are a highly skilled translation engine with expertise in fanfiction and originalworks on AO3. Your function is to translate texts accurately into the target Simplified Chinese preserving cultural nuances, idiomatic expressions, and fandom-specific terminology.Do not add any explanations or annotations to the translated text.${customInstructions}`;
-                    const user_prompt = `Translate to Simplified Chinese (output translation only):\n${text}`;
+                    const system_prompt = `You are an expert translator specializing in fanfiction and online literature from various languages. Your primary function is to accurately identify the source language of a given text and then translate it into natural, fluent Simplified Chinese. You must preserve the original's tone, cultural nuances, idiomatic expressions, and any fandom-specific terminology. Your output must be *only* the translated text, without any additional notes, explanations, or language identification labels.${customInstructions}`;
+                    const user_prompt = `Translate the following text to Simplified Chinese, providing only the translation itself:\n\n${text}`;
 
                     return {
                         model: "glm-4-flash",
@@ -639,6 +639,7 @@ const I18N = {
                 'No, Go Back': '否，返回',
                 'Work successfully deleted from your history.': '该作品已成功从您的历史记录中删除。',
                 'Your history is now cleared.': '您的历史记录已清除。',
+                'You are already signed in.': '您已登录。',
             },
             'innerHTML_regexp': [
 
@@ -5645,6 +5646,10 @@ function translateFlashMessages() {
         if (document.querySelector('ul.media.fandom.index.group')) return 'media_index';
         if (document.querySelector('div#main.owned_tag_sets-show')) return 'owned_tag_sets_show';
         const { hostname, pathname, search } = window.location;
+        // 忽略 /first_login_help 页面
+        if (pathname.startsWith('/first_login_help')) {
+            return false;
+        }
         if (pathname === '/abuse_reports/new' || pathname === '/support') return 'report_and_support_page';
         if (pathname === '/known_issues') return 'known_issues_page';
         if (pathname === '/tos') return 'tos_page';
@@ -5658,7 +5663,7 @@ function translateFlashMessages() {
         if (pathname === '/site_map') return 'site_map';
         if (pathname.startsWith('/wrangling_guidelines')) return 'wrangling_guidelines_page';
         if (pathname === '/donate') return 'donate_page';
-        if (pathname === '/faq') return 'faq_page';
+        if (pathname.startsWith('/faq')) return 'faq_page';
         if (pathname === '/help/skins-basics.html') return 'help_skins_basics';
         if (pathname === '/help/tagset-about.html') return 'help_tagset_about';
         if (pathname === '/tag_sets') return 'tag_sets_index';
