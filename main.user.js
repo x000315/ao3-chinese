@@ -43,7 +43,7 @@
         // 文本分块与请求限流的配置
         CHUNK_SIZE: 1200, // 每次请求最大文本长度
         PARAGRAPH_LIMIT: 4,   // 每次请求最大段落数
-        REQUEST_DELAY: 200, // 每次API请求之间的延迟（毫秒），1000/200 = 5次/秒，低于10次的限制
+        REQUEST_DELAY: 200, // 每次API请求之间的延迟（毫秒）
 
         transEngine: 'chatglm_official',
         TRANS_ENGINES: {
@@ -66,8 +66,8 @@
                     } catch (e) { /* 忽略格式错误的词典 */ }
 
                     // 应用System Prompt和Prompt模板
-                    const system_prompt = `You are a highly skilled translation engine with expertise in fanfiction and originalworks on AO3. Your function is to translate texts accurately into the target Simplified Chinese preserving cultural nuances, idiomatic expressions, and fandom-specific terminology.Do not add any explanations or annotations to the translated text.${customInstructions}`;
-                    const user_prompt = `Translate to Simplified Chinese (output translation only):\n${text}`;
+                    const system_prompt = `You are an expert translator specializing in fanfiction and online literature from various languages. Your primary function is to accurately identify the source language of a given text and then translate it into natural, fluent Simplified Chinese. You must preserve the original's tone, cultural nuances, idiomatic expressions, and any fandom-specific terminology. Your output must be *only* the translated text, without any additional notes, explanations, or language identification labels.${customInstructions}`;
+                    const user_prompt = `Translate the following text to Simplified Chinese, providing only the translation itself:\n\n${text}`;
 
                     return {
                         model: "glm-4-flash",
