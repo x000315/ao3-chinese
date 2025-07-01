@@ -17,7 +17,7 @@
 3.  选择一个版本进行安装：
     - [远程版](https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/main.user.js)
     - [本地版](https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/local.user.js)
-4.  注意：介于可能存在的网络问题，建议优先使用包含了词库的 [本地版](https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/local.user.js) 。
+4.  注意：鉴于可能存在的网络问题，建议优先使用包含了词库的 [本地版](https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/local.user.js) 。
 
 ## 📖 使用说明
 
