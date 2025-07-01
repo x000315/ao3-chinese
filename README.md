@@ -14,7 +14,10 @@
 
 1.  在浏览器中安装一个用户脚本管理器，推荐使用 [Tampermonkey](https://www.tampermonkey.net/) 。
 2.  开启浏览器 “管理扩展” 中的 “开发人员模式”。
-3.  点击链接进行安装： [点此安装 AO3 汉化插件](https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/main.user.js) 。
+3.  选择一个版本进行安装：
+    - [远程版](https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/main.user.js)
+    - [本地版](https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/local.user.js)
+4.  注意：介于可能存在的网络问题，建议优先使用包含了词库的 [本地版](https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/local.user.js) 。
 
 ## 📖 使用说明
 
@@ -23,7 +26,7 @@
 
 ## 🤝 贡献与反馈
 
-如果你发现了任何翻译错漏、脚本 Bug，或者有功能建议，欢迎通过 [议题](https://github.com/V-Lipset/ao3-chinese/issues) 页面提交反馈！
+如果你发现了任何翻译错漏、脚本 Bug，或者有功能建议，欢迎通过 [Issues](https://github.com/V-Lipset/ao3-chinese/issues) 页面提交反馈！
 
 ## 📄 许可证
 
