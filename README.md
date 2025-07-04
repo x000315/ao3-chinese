@@ -35,4 +35,6 @@
 本脚本基于 [GPL-3.0 License](./LICENSE) 许可证开源。
 
 ## 🙏 特别鸣谢
+- [V-Lipset](https://github.com/V-Lipset)
+- [JiangxianEden](https://github.com/JiangxianEden)
 - [Github 汉化插件](https://github.com/maboloshi/github-chinese)
