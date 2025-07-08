@@ -1,7 +1,7 @@
 /**
  name         AO3 汉化插件 - 词库
  namespace    https://github.com/V-Lipset/ao3-chinese
- version      1.0.0-2025-07-01
+ version      1.1.0-2025-07-01
  description  AO3 汉化插件的词库文件
  author       V-Lipset
  license      GPL-3.0
@@ -223,7 +223,7 @@ const I18N = {
                 'Sign-ups': '报名挑战',
                 'Assignments': '任务中心',
                 'My Assignments': '任务中心',
-                'Looking for prompts you claimed in a prompt meme? Try': '想查看您在“接梗挑战”中认领的创意提示？请前往',
+                'Looking for prompts you claimed in a prompt meme? Try': '想查看您在“接梗挑战”中认领的同人梗？请前往',
                 'My Claims': '我的认领',
                 'Unfulfilled Claims': '未完成的认领',
                 'Fulfilled Claims': '已完成的认领',
@@ -562,9 +562,12 @@ const I18N = {
                 'This work could have adult content. If you continue, you have agreed that you are willing to see such content.': '此作品可能含有成人内容。若您选择“继续”，即表示您同意查看此类内容。',
                 'Yes, Continue': '是，继续',
                 'No, Go Back': '否，返回',
+                'Set your preferences now': '立即设置您的偏好',
                 'Work successfully deleted from your history.': '该作品已成功从您的历史记录中删除。',
                 'Your history is now cleared.': '您的历史记录已清除。',
                 'You are already signed in.': '您已登录。',
+                'There are no works or bookmarks under this name yet.': '此名称下尚无作品或书签。',
+                'Sorry, you don\'t have permission to access the page you were trying to reach. Please log in.': '抱歉，您无权访问目标页面。请先登录。',
             },
             'innerHTML_regexp': [
 
@@ -651,7 +654,7 @@ const I18N = {
                     <li>阻止您接收来自该用户的评论或订阅邮件</li>
                     <li>将她们的内容隐藏给其她任何人</li>
                     </ul>
-                    <p>如需阻止某用户在您的作品上发表评论或在站点其她地方回复您的评论，请访问 <a href="$2">已屏蔽用户页面</a>。</p>
+                    <p>如需阻止某用户在您的作品上发表评论或在站点其她地方回复您的评论，请访问 <a href="$2">已屏蔽用户页面</a> 。</p>
                     <p>请注意，如果您未使用默认站点界面，静音功能可能无法正常工作。要了解有关 <a href="$3">如何恢复默认站点界面</a> 的说明，请参阅 界面与 Archive 界面常见问题 。</p>`
                 ],
                 ['div.flash.notice', 
@@ -782,6 +785,16 @@ const I18N = {
                     'label[for="reset_login"]',
                     /^\s*Email address\s*<strong>or<\/strong>\s*username\s*$/s,
                     '电子邮箱地址 <strong>或</strong> 用户名'
+                ],
+                [
+                    'p.jump',
+                    /^\s*\((?:See the end of the work for|在作品结尾查看)\s*(<a href="#work_endnotes">)(?:notes|注释)(<\/a>)\.\)\s*$/s,
+                    '（在作品结尾查看$1注释$2。）'
+                ],
+                [
+                    'p.muted.notice',
+                    /^\s*You have muted some users on the Archive\.\s*Some items may not be shown, and any counts may be inaccurate\.\s*You can mute or unmute users on\s*<a href="(\/users\/[^\/]+\/muted\/users)">your Muted Users page<\/a>\s*[.。]?\s*$/s,
+                    '您已在 Archive 上静音了部分用户。部分内容可能因此不予显示，相关计数也可能并不准确。您可在 <a href="$1">已静音用户</a> 页面静音或取消静音用户。'
                 ],
             ],
             'regexp': [
@@ -3328,7 +3341,7 @@ function translateWarningHelpModal() {
                 <dt>主要角色死亡：</dt>
                 <dd>请自行判断哪些角色属于“主要角色”。</dd>
                 <dt>Archive 预警不适用：</dt>
-                <dd>如果您的内容不包含血腥暴力描写、主要角色死亡、强奸/非自愿性行为或未成年性行为，请选择此项。</dd>
+                <dd>如果您的内容不包含血腥暴力描写、主要角色死亡、强暴/非自愿性行为或未成年性行为，请选择此项。</dd>
                 <dt>强暴/非自愿性行为：</dt>
                 <dd>如您认为内容可能涉及非自愿性行为，但不确定或不想使用此预警，可选择“不使用 Archive 预警”。</dd>
                 <dt>未成年性行为：</dt>
@@ -4413,7 +4426,7 @@ function translateWorkSearchResultsHelp() {
 
 
 /**
- * 专门用于翻译“Skins approval”（界面审核）弹窗的提示信息。
+ * 专门用于翻译“Skins approval”弹窗的提示信息。
  */
 function translateSkinsApprovalModal() {
     const container = document.querySelector('#modal div.content.userstuff');
@@ -4444,7 +4457,7 @@ function translateSkinsApprovalModal() {
 
 
 /**
- * 专门用于翻译“Skins creating”（界面创建）弹窗中复杂的 CSS 帮助文本。
+ * 专门用于翻译“Skins creating”弹窗中的 CSS 帮助文本。
  */
 function translateSkinsCreatingModal() {
     const container = document.querySelector('#modal div.content.userstuff');
@@ -4631,7 +4644,7 @@ function translateSkinsConditionsModal() {
 
 
 /**
- * 专门用于翻译“Skins parents”（界面母级）弹窗的帮助文本。
+ * 专门用于翻译“Skins parents”弹窗的帮助文本。
  */
 function translateSkinsParentsModal() {
     const container = document.querySelector('#modal div.content.userstuff');
@@ -5158,7 +5171,7 @@ function translateActionButtons() {
     if (unfavoriteTagButton) {
         unfavoriteTagButton.value = '取消收藏';
     }
-    // 处理所有 ajax-create-destroy 表单的 data- 属性
+
     const ajaxForms = document.querySelectorAll('form.ajax-create-destroy');
     ajaxForms.forEach(form => {
         // 订阅功能
