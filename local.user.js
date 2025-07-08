@@ -900,7 +900,7 @@ const I18N = {
                 ],
                 [
                     'p.jump',
-                    /^\s*\((?:See the end of the work for|在作品结尾查看)\s*(<a href="#work_endnotes">)(?:notes|注释)(<\/a>)\.\)\s*$/s,
+                    /^\s*\((?:See the end of the work for|在作品结尾查看)\s*(<a href="[^"]*#work_endnotes">)(?:notes|注释)(<\/a>)\.\)\s*$/s,
                     '（在作品结尾查看$1注释$2。）'
                 ],
                 [
