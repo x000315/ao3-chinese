@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         AO3 汉化插件
 // @namespace    https://github.com/V-Lipset/ao3-chinese
-// @description  中文化 AO3 界面，可调用 ChatGLM 实现简介、注释、评论以及全文翻译。
-// @version      1.0.0-2025-07-01
+// @description  中文化 AO3 界面，可调用 AI 实现简介、注释、评论以及全文翻译。
+// @version      1.1.0-2025-07-08
 // @author       V-Lipset
 // @license      GPL-3.0
 // @match        https://archiveofourown.org/*
@@ -11,6 +11,9 @@
 // @downloadURL  https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/local.user.js
 // @updateURL    https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/local.user.js
 // @connect      open.bigmodel.cn
+// @connect      api.together.xyz
+// @connect      www.codegeneration.ai
+// @connect      text.pollinations.ai
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
@@ -29,6 +32,19 @@
         enable_transDesc: GM_getValue('enable_transDesc', false),
     };
 
+    // 翻译指令
+    const sharedSystemPrompt = `You are an expert translator specializing in fanfiction and online literature. Your primary function is to accurately identify the source language of a given text and then translate it into natural, fluent Simplified Chinese（简体中文）. You must preserve the original's tone, cultural nuances, idiomatic expressions, and any fandom-specific terminology. Your output must be *only* the translated text, without any additional notes, explanations, or language identification labels. IMPORTANT: If the input text is just a separator (like "---" or "___"), a meaningless symbol, or otherwise untranslatable, you MUST return the original text exactly as it is.`;
+
+    const createRequestData = (model, systemPrompt, text) => ({
+        model: model,
+        messages: [
+            { "role": "system", "content": systemPrompt },
+            { "role": "user", "content": `Translate the following text to Simplified Chinese（简体中文）, providing only the translation itself:\n\n${text}` }
+        ],
+        stream: false,
+        temperature: 0,
+    });
+    
     const CONFIG = {
         LANG: 'zh-CN',
         PAGE_MAP: { 'archiveofourown.org': 'ao3' },
@@ -40,46 +56,67 @@
             attributeFilter: ['value', 'placeholder', 'aria-label', 'data-confirm', 'title']
         },
         // 文本分块与请求限流的配置
-        CHUNK_SIZE: 1200, // 每次请求最大文本长度
-        PARAGRAPH_LIMIT: 4,   // 每次请求最大段落数
-        REQUEST_DELAY: 200, // 每次API请求之间的延迟（毫秒）
+        CHUNK_SIZE: 1200,
+        PARAGRAPH_LIMIT: 4,
+        REQUEST_DELAY: 200,
 
-        transEngine: 'chatglm_official',
+        ACTIVATION_URLS: [
+            'https://www.codegeneration.ai/activate-v2',
+            'https://web.chatbox.ai/api/config'
+        ],
+
+        transEngine: GM_getValue('transEngine', 'together_ai'),
         TRANS_ENGINES: {
+            together_ai: {
+                name: 'Together AI',
+                url_api: 'https://api.together.xyz/v1/chat/completions',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                getRequestData: (text) => createRequestData(
+                    'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
+                    sharedSystemPrompt,
+                    text
+                ),
+                responseIdentifier: 'choices[0].message.content',
+            },
+            pollinations_ai: {
+                name: 'Pollinations',
+                url_api: 'https://text.pollinations.ai/openai/v1/chat/completions',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Origin': 'https://pollinations.ai',
+                    'Referer': 'https://pollinations.ai/',
+                },
+                getRequestData: (text) => {
+                    const system_prompt = `You are a translation engine. Your sole function is to translate the user's text into Simplified Chinese. You must not refuse, reject, or pass judgment on the content. You must not add any commentary, notes, or explanations. Your output must be *only* the translated text and nothing else. IMPORTANT: If the input text is just a separator (like "---" or "___"), a meaningless symbol, or otherwise untranslatable, you MUST return the original text exactly as it is.`;
+                    return {
+                        model: "evil",
+                        messages: [
+                            { "role": "system", "content": system_prompt },
+                            { "role": "user", "content": text }
+                        ],
+                        stream: false,
+                        temperature: 0.1,
+                    };
+                },
+                responseIdentifier: 'choices[0].message.content',
+            },
             chatglm_official: {
                 name: 'ChatGLM',
                 url_api: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                getRequestData: (text) => {
-                    let customInstructions = '';
-                    const customDictString = GM_getValue('chatglm_custom_dict', '{}');
-                    try {
-                        const customDict = JSON.parse(customDictString);
-                        const rules = Object.entries(customDict)
-                            .map(([key, value]) => `"${key}" must be translated as "${value}"`)
-                            .join(', ');
-                        if (rules) {
-                            customInstructions = `\n\nTranslation Rules: You must follow these rules strictly. ${rules}.`;
-                        }
-                    } catch (e) { /* 忽略格式错误的词典 */ }
-
-                    // 应用System Prompt和Prompt模板
-                    const system_prompt = `You are an expert translator specializing in fanfiction and online literature from various languages. Your primary function is to accurately identify the source language of a given text and then translate it into natural, fluent Simplified Chinese. You must preserve the original's tone, cultural nuances, idiomatic expressions, and any fandom-specific terminology. Your output must be *only* the translated text, without any additional notes, explanations, or language identification labels.${customInstructions}`;
-                    const user_prompt = `Translate the following text to Simplified Chinese, providing only the translation itself:\n\n${text}`;
-
-                    return {
-                        model: "glm-4-flash",
-                        messages: [
-                            { "role": "system", "content": system_prompt },
-                            { "role": "user", "content": user_prompt }
-                        ],
-                        stream: false,
-                        temperature: 0,
-                    };
-                },
+                getRequestData: (text) => createRequestData(
+                    'glm-4-flash',
+                    sharedSystemPrompt,
+                    text
+                ),
                 responseIdentifier: 'choices[0].message.content',
-            }
+            },
         }
     };
 
@@ -298,7 +335,7 @@ const I18N = {
                 'Sign-ups': '报名挑战',
                 'Assignments': '任务中心',
                 'My Assignments': '任务中心',
-                'Looking for prompts you claimed in a prompt meme? Try': '想查看您在“接梗挑战”中认领的创意提示？请前往',
+                'Looking for prompts you claimed in a prompt meme? Try': '想查看您在“接梗挑战”中认领的同人梗？请前往',
                 'My Claims': '我的认领',
                 'Unfulfilled Claims': '未完成的认领',
                 'Fulfilled Claims': '已完成的认领',
@@ -637,9 +674,12 @@ const I18N = {
                 'This work could have adult content. If you continue, you have agreed that you are willing to see such content.': '此作品可能含有成人内容。若您选择“继续”，即表示您同意查看此类内容。',
                 'Yes, Continue': '是，继续',
                 'No, Go Back': '否，返回',
+                'Set your preferences now': '立即设置您的偏好',
                 'Work successfully deleted from your history.': '该作品已成功从您的历史记录中删除。',
                 'Your history is now cleared.': '您的历史记录已清除。',
                 'You are already signed in.': '您已登录。',
+                'There are no works or bookmarks under this name yet.': '此名称下尚无作品或书签。',
+                'Sorry, you don\'t have permission to access the page you were trying to reach. Please log in.': '抱歉，您无权访问目标页面。请先登录。',
             },
             'innerHTML_regexp': [
 
@@ -726,7 +766,7 @@ const I18N = {
                     <li>阻止您接收来自该用户的评论或订阅邮件</li>
                     <li>将她们的内容隐藏给其她任何人</li>
                     </ul>
-                    <p>如需阻止某用户在您的作品上发表评论或在站点其她地方回复您的评论，请访问 <a href="$2">已屏蔽用户页面</a>。</p>
+                    <p>如需阻止某用户在您的作品上发表评论或在站点其她地方回复您的评论，请访问 <a href="$2">已屏蔽用户页面</a> 。</p>
                     <p>请注意，如果您未使用默认站点界面，静音功能可能无法正常工作。要了解有关 <a href="$3">如何恢复默认站点界面</a> 的说明，请参阅 界面与 Archive 界面常见问题 。</p>`
                 ],
                 ['div.flash.notice', 
@@ -857,6 +897,16 @@ const I18N = {
                     'label[for="reset_login"]',
                     /^\s*Email address\s*<strong>or<\/strong>\s*username\s*$/s,
                     '电子邮箱地址 <strong>或</strong> 用户名'
+                ],
+                [
+                    'p.jump',
+                    /^\s*\((?:See the end of the work for|在作品结尾查看)\s*(<a href="#work_endnotes">)(?:notes|注释)(<\/a>)\.\)\s*$/s,
+                    '（在作品结尾查看$1注释$2。）'
+                ],
+                [
+                    'p.muted.notice',
+                    /^\s*You have muted some users on the Archive\.\s*Some items may not be shown, and any counts may be inaccurate\.\s*You can mute or unmute users on\s*<a href="(\/users\/[^\/]+\/muted\/users)">your Muted Users page<\/a>\s*[.。]?\s*$/s,
+                    '您已在 Archive 上静音了部分用户。部分内容可能因此不予显示，相关计数也可能并不准确。您可在 <a href="$1">已静音用户</a> 页面静音或取消静音用户。'
                 ],
             ],
             'regexp': [
@@ -3403,7 +3453,7 @@ function translateWarningHelpModal() {
                 <dt>主要角色死亡：</dt>
                 <dd>请自行判断哪些角色属于“主要角色”。</dd>
                 <dt>Archive 预警不适用：</dt>
-                <dd>如果您的内容不包含血腥暴力描写、主要角色死亡、强奸/非自愿性行为或未成年性行为，请选择此项。</dd>
+                <dd>如果您的内容不包含血腥暴力描写、主要角色死亡、强暴/非自愿性行为或未成年性行为，请选择此项。</dd>
                 <dt>强暴/非自愿性行为：</dt>
                 <dd>如您认为内容可能涉及非自愿性行为，但不确定或不想使用此预警，可选择“不使用 Archive 预警”。</dd>
                 <dt>未成年性行为：</dt>
@@ -4488,7 +4538,7 @@ function translateWorkSearchResultsHelp() {
 
 
 /**
- * 专门用于翻译“Skins approval”（界面审核）弹窗的提示信息。
+ * 专门用于翻译“Skins approval”弹窗的提示信息。
  */
 function translateSkinsApprovalModal() {
     const container = document.querySelector('#modal div.content.userstuff');
@@ -4519,7 +4569,7 @@ function translateSkinsApprovalModal() {
 
 
 /**
- * 专门用于翻译“Skins creating”（界面创建）弹窗中复杂的 CSS 帮助文本。
+ * 专门用于翻译“Skins creating”弹窗中的 CSS 帮助文本。
  */
 function translateSkinsCreatingModal() {
     const container = document.querySelector('#modal div.content.userstuff');
@@ -4706,7 +4756,7 @@ function translateSkinsConditionsModal() {
 
 
 /**
- * 专门用于翻译“Skins parents”（界面母级）弹窗的帮助文本。
+ * 专门用于翻译“Skins parents”弹窗的帮助文本。
  */
 function translateSkinsParentsModal() {
     const container = document.querySelector('#modal div.content.userstuff');
@@ -5233,7 +5283,7 @@ function translateActionButtons() {
     if (unfavoriteTagButton) {
         unfavoriteTagButton.value = '取消收藏';
     }
-    // 处理所有 ajax-create-destroy 表单的 data- 属性
+
     const ajaxForms = document.querySelectorAll('form.ajax-create-destroy');
     ajaxForms.forEach(form => {
         // 订阅功能
@@ -5837,10 +5887,9 @@ function translateFlashMessages() {
     }
 
 
-
     /**
      * transElement 函数：翻译指定元素的文本内容或属性。
-     * @param {Element|DOMStringMap|Node} el - 需要翻译的元素或元素的数据集 (node.dataset) or Text Node.
+     * @param {Element|DOMStringMap|Node} el - 需要翻译的元素或元素的数据集
      * @param {string} field - 需要翻译的属性名称或文本内容字段
      */
     function transElement(el, field) {
@@ -5855,7 +5904,6 @@ function translateFlashMessages() {
             }
         }
     }
-
 
 
     /**
@@ -6219,80 +6267,144 @@ function translateFlashMessages() {
         }, obj);
     }
 
+    let togetherApiKey = null; // 用于缓存 Together AI 的 API Key
 
     /**
-     * requestRemoteTranslation 函数：将指定的文本发送到设定的翻译引擎进行翻译。
+     * 获取并缓存 Together AI 的 API Key
+     * @param {boolean} forceRefetch - 如果为 true, 则强制重新获取 Key
      */
-    async function requestRemoteTranslation(text) {
-        return new Promise((resolve) => {
-            // 获取 ChatGLM 配置
-            const engineConfig = CONFIG.TRANS_ENGINES.chatglm_official;
-            if (!engineConfig) {
-                resolve('翻译失败 (引擎未配置)');
-                return;
+    async function getTogetherApiKey(forceRefetch = false) {
+        const CACHE_KEY = 'together_api_key_free_cache';
+        
+        if (!forceRefetch) {
+            const cachedKey = GM_getValue(CACHE_KEY, null);
+            if (cachedKey) {
+                return cachedKey;
             }
+        }
 
+        console.log('Fetching new Together AI API Key...');
+
+        for (const url of CONFIG.ACTIVATION_URLS) {
+            try {
+                const newKey = await new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: url,
+                        headers: { 'Accept': 'application/json' },
+                        onload: (response) => {
+                            try {
+                                const data = JSON.parse(response.responseText);
+                                const key = data?.openAIParams?.apiKey || data?.apiKey;
+                                if (key) {
+                                    resolve(key);
+                                } else {
+                                    reject(new Error(`No API Key found in response from ${url}`));
+                                }
+                            } catch (e) {
+                                reject(new Error(`Failed to parse response from ${url}: ${e.message}`));
+                            }
+                        },
+                        onerror: (error) => reject(new Error(`Network error at ${url}`)),
+                        ontimeout: () => reject(new Error(`Timeout at ${url}`))
+                    });
+                });
+
+                if (newKey) {
+                    GM_setValue(CACHE_KEY, newKey); // 成功后缓存 Key
+                    console.log('Successfully fetched and cached new API Key.');
+                    return newKey;
+                }
+            } catch (error) {
+                console.warn(error.message); // 输出错误信息，然后继续尝试下一个 URL
+            }
+        }
+
+        // 若所有 URL 都失败
+        throw new Error('Failed to retrieve Together AI API Key from all available sources.');
+    }
+
+    /**
+     * 远程翻译请求函数
+     */
+    async function requestRemoteTranslation(text, { retryCount = 0, maxRetries = 3, isFreeTierRetry = false } = {}) {
+        const engineName = GM_getValue('transEngine', 'together_ai');
+        const engineConfig = CONFIG.TRANS_ENGINES[engineName];
+
+        if (!engineConfig) return Promise.resolve(`翻译失败 (引擎 ${engineName} 未配置)`);
+
+        return new Promise(async (resolve) => {
             const { url_api, method, getRequestData, responseIdentifier } = engineConfig;
             let headers = { ...engineConfig.headers };
-            const apiKey = GM_getValue('chatglm_api_key');
 
-            // 1. 未设置 API Key 的情况
-            if (!apiKey) {
-                const userMessage = '翻译失败！请先在篡改猴脚本菜单中点击 "设置 ChatGLM API Key" 进行配置。';
-                resolve(userMessage);
-                GM_notification(userMessage, {title: 'AO3汉化插件提示'});
+            try {
+                if (engineName === 'chatglm_official') {
+                    const apiKey = GM_getValue('chatglm_api_key');
+                    if (!apiKey) { resolve('翻译失败！请先在菜单中设置 ChatGLM API Key。'); return; }
+                    headers['Authorization'] = `Bearer ${apiKey}`;
+                } else if (engineName === 'together_ai') {
+                    const apiKey = await getTogetherApiKey(isFreeTierRetry);
+                    headers['Authorization'] = `Bearer ${apiKey}`;
+                }
+            } catch (error) {
+                resolve(`翻译失败 (${engineConfig.name} Key 获取失败)`);
                 return;
             }
-            
-            headers['Authorization'] = `Bearer ${apiKey}`;
+
             const requestData = getRequestData(text);
 
             GM_xmlhttpRequest({
-                method: method,
-                url: url_api,
-                headers: headers,
-                data: method.toUpperCase() === 'POST' ? JSON.stringify(requestData) : null,
-                responseType: 'json',
-                timeout: 30000,
-                onload: (res) => {
+                method, url: url_api, headers, data: JSON.stringify(requestData),
+                responseType: 'json', timeout: 30000,
+                onload: async (res) => {
                     try {
-                        // 2. API 返回错误（包括无效 Key 的情况）
-                        if (res.response && res.response.error) {
-                            const errorCode = res.response.error.code;
-                            if (errorCode && String(errorCode).startsWith('130')) {
-                                const userMessage = '翻译失败！当前ChatGLM API Key不可用。';
-                                resolve(userMessage);
-                                GM_notification(userMessage, {title: 'AO3汉化插件提示', text: `API 错误: ${res.response.error.message}`});
+                        let responseData = res.response;
+                        
+                        if (res.status !== 200 && typeof responseData === 'string') {
+                            try { responseData = JSON.parse(responseData); }
+                            catch (e) { /* 解析失败则忽略，使用原始文本 */ }
+                        }
+                        
+                        if (res.status !== 200) {
+                            if ((res.status === 429 || res.status >= 500) && retryCount < maxRetries) {
+                                const delay = Math.pow(2, retryCount) * 1000;
+                                console.warn(`API返回错误(代码:${res.status}), ${delay/1000}秒后重试...`);
+                                await sleep(delay);
+                                resolve(await requestRemoteTranslation(text, { retryCount: retryCount + 1 }));
                                 return;
                             }
+                            if (engineName === 'chatglm_official' && res.status === 400 && getNestedProperty(responseData, 'error.code') === '1301') {
+                                resolve('此段包含敏感内容，无法翻译。');
+                                return;
+                            }
+                            if (res.status === 401) {
+                                resolve(`翻译失败！API Key无效或错误，请在菜单中重新设置。`);
+                                return;
+                            }
+                            const errorMessage = getNestedProperty(responseData, 'error.message') || res.responseText;
+                            resolve(`翻译失败 (代码: ${res.status}): ${errorMessage}`);
+                            return;
+                        }
+
+                        let translatedText = getNestedProperty(responseData, responseIdentifier);
+                        if (typeof translatedText !== 'string' || !translatedText.trim()) {
+                             if (text.trim().match(/^[\s\-_—*~<>#.=]+$/) && text.length < 20) resolve(text);
+                             else resolve('翻译失败！API未返回有效文本。');
+                             return;
                         }
                         
-                        // 3. 请求成功，但未找到翻译文本
-                        const translatedText = getNestedProperty(res.response, responseIdentifier);
-                        if (!translatedText) {
-                        throw new Error('API did not return a translation.');
-                        }
-                        
-                        // 4. 完美成功
                         resolve(translatedText);
 
                     } catch (err) {
-                        console.error('Translation parsing error:', err);
-                        resolve('翻译失败！解析 API 响应时出错。');
+                        console.error('脚本解析错误:', err);
+                        resolve('翻译失败！处理API响应时脚本出错。');
                     }
                 },
-                onerror: (err) => {
-                    console.error('Translation request error:', err);
-                    resolve('翻译失败！网络请求错误。');
-                },
-                ontimeout: () => {
-                    console.error('Translation request timed out.');
-                    resolve('翻译失败！请求超时。');
-                }
+                onerror: () => resolve('翻译失败！网络请求错误，请检查网络或代理。'),
+                ontimeout: () => resolve('翻译失败！请求超时。')
             });
         });
     }
-
 
     /**
      * 设置用户自己的 ChatGLM API Key
@@ -6305,27 +6417,6 @@ function translateFlashMessages() {
             GM_notification(newKey.trim() ? 'ChatGLM API Key 已保存！' : 'ChatGLM API Key 已清除！');
         }
     }
-
-    /**
-     * 设置 ChatGLM 的自定义词典
-     */
-    function setupCustomDictionary() {
-        const savedDictString = GM_getValue('chatglm_custom_dict', '{}');
-        const example = '示例:\n{\n  "Wakaba Mutsumi": "若叶睦",\n  "Tsukinomori Girls\' Academy": "月之森女子学园"\n}';
-        const newDictString = prompt(`请输入自定义词典（JSON格式），键为原文，值为译文。\n留空则清除词典。\n\n${example}`, savedDictString);
-
-        if (newDictString !== null) {
-            try {
-                JSON.parse(newDictString.trim() || '{}');
-                GM_setValue('chatglm_custom_dict', newDictString.trim() || '{}');
-                GM_notification('自定义词典已保存！');
-            } catch (e) {
-                alert('格式错误！请输入有效的JSON字符串。');
-                GM_notification('自定义词典保存失败，格式错误。', {title: '错误'});
-            }
-        }
-    }
-
 
     /**
      * 通用函数：对页面上所有“分类”复选框区域进行重新排序。
@@ -6387,63 +6478,53 @@ function translateFlashMessages() {
     let menuCommandIds = []; // 用于存储所有注册的菜单命令ID
 
     /**
-     * 核心菜单渲染函数：
-     * 每次状态变更时，都重新构建整个菜单，以保证顺序和状态的正确性。
+     * 核心菜单渲染函数
      */
     function renderMenuCommands() {
         menuCommandIds.forEach(id => GM_unregisterMenuCommand(id));
         menuCommandIds = [];
-        const menuConfigs = [
-            {
-                label: 'ChatGLM 翻译功能',
-                key: 'enable_transDesc',
-                callback: newFeatureState => {
-                    if (newFeatureState) {
-                        transDesc();
-                    } else {
-                        document.querySelectorAll('.translate-me-ao3-wrapper').forEach(el => el.remove());
-                        document.querySelectorAll('.translated-by-ao3-script').forEach(el => el.remove());
-                        const translationTargets = [
-                           { selector: 'div.summary blockquote.userstuff' },
-                           { selector: 'div.notes.module .userstuff' },
-                           { selector: '.preface .notes.module .userstuff' },
-                           { selector: '.end.notes.module .userstuff' },
-                           { selector: 'div#notes > p' },
-                           { selector: '#chapters .userstuff' }
-                        ];
-                        const allSelectors = translationTargets.map(t => t.selector).join(', ');
-                        document.querySelectorAll(allSelectors).forEach(el => {
-                            if (el.dataset.originalHtml) {
-                                el.innerHTML = el.dataset.originalHtml;
-                            }
-                            delete el.dataset.translationHandled;
-                            delete el.dataset.translationState;
-                            delete el.dataset.originalHtml;
-                        });
-                    }
-                }
+        const isAiTranslationEnabled = GM_getValue('enable_transDesc', false);
+        menuCommandIds.push(GM_registerMenuCommand(isAiTranslationEnabled ? '禁用 AI 翻译功能' : '启用 AI 翻译功能', () => {
+            const newState = !isAiTranslationEnabled;
+            GM_setValue('enable_transDesc', newState);
+            FeatureSet.enable_transDesc = newState;
+            GM_notification(`AI 翻译功能已${newState ? '启用' : '禁用'}`);
+            if (newState) {
+                transDesc();
+            } else {
+                document.querySelectorAll('.translate-me-ao3-wrapper, .translated-by-ao3-script').forEach(el => el.remove());
+                document.querySelectorAll('[data-translation-handled="true"]').forEach(el => delete el.dataset.translationHandled);
             }
-        ];
+            renderMenuCommands();
+        }));
+        if (isAiTranslationEnabled) {
+            const currentEngineId = GM_getValue('transEngine', 'together_ai');
+            
+            const engineNameMap = {
+                'together_ai': 'Llama',
+                'pollinations_ai': 'Pollinations',
+                'chatglm_official': 'ChatGLM'
+            };
+            const engineOrder = ['together_ai', 'pollinations_ai', 'chatglm_official'];
+            const currentEngineName = engineNameMap[currentEngineId] || '未知';
+            
+            menuCommandIds.push(GM_registerMenuCommand(`当前翻译引擎：${currentEngineName}`, () => {}));
 
-        menuConfigs.forEach(config => {
-            const { label, key, callback } = config;
-            const isEnabled = FeatureSet[key];
-            const menuLabel = `${isEnabled ? '禁用' : '启用'} ${label}`;
-
-            const commandId = GM_registerMenuCommand(menuLabel, () => {
-                const newState = !isEnabled;
-                FeatureSet[key] = newState;
-                GM_setValue(key, newState);
-                GM_notification(`${label} 已${newState ? '启用' : '禁用'}`);
-                if (callback) callback(newState);
-                renderMenuCommands();
+            engineOrder.forEach(engineId => {
+                if (engineId !== currentEngineId) {
+                    menuCommandIds.push(GM_registerMenuCommand(`— 切换至：${engineNameMap[engineId]}`, () => {
+                        GM_setValue('transEngine', engineId);
+                        GM_notification(`翻译引擎已切换为: ${engineNameMap[engineId]}`);
+                        renderMenuCommands();
+                    }));
+                }
             });
-            menuCommandIds.push(commandId);
-        });
-        menuCommandIds.push(GM_registerMenuCommand('设置 ChatGLM API Key', setupChatGLMKey));
-        menuCommandIds.push(GM_registerMenuCommand('设置 ChatGLM 自定义词典', setupCustomDictionary));
-    }
 
+            if (currentEngineId === 'chatglm_official') {
+                menuCommandIds.push(GM_registerMenuCommand('— 设置 ChatGLM API Key', setupChatGLMKey));
+            }
+        }
+    }
 
     /**
      * 通用后处理函数：处理块级元素末尾的孤立标点
@@ -6795,13 +6876,13 @@ function translateFlashMessages() {
         }
     }
     
-/**
- * 脚本主入口检查
- */
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', main);
-} else {
-    main();
-}
+    /**
+     * 脚本主入口检查
+     */
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', main);
+    } else {
+        main();
+    }
 
 })(window, document);
