@@ -2,18 +2,19 @@
 // @name         AO3 汉化插件
 // @namespace    https://github.com/V-Lipset/ao3-chinese
 // @description  中文化 AO3 界面，可调用 AI 实现简介、注释、评论以及全文翻译。
-// @version      1.1.0-2025-07-08
+// @version      1.2.0-2025-07-19
 // @author       V-Lipset
 // @license      GPL-3.0
 // @match        https://archiveofourown.org/*
-// @icon         https://archiveofourown.org/favicon.ico
+// @icon         https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/assets/icon.png
 // @supportURL   https://github.com/V-Lipset/ao3-chinese/issues
 // @downloadURL  https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/local.user.js
 // @updateURL    https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/local.user.js
 // @connect      open.bigmodel.cn
+// @connect      api.deepseek.com
+// @connect      generativelanguage.googleapis.com
 // @connect      api.together.xyz
 // @connect      www.codegeneration.ai
-// @connect      text.pollinations.ai
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
@@ -33,17 +34,65 @@
     };
 
     // 翻译指令
-    const sharedSystemPrompt = `You are an expert translator specializing in fanfiction and online literature. Your primary function is to accurately identify the source language of a given text and then translate it into natural, fluent Simplified Chinese（简体中文）. You must preserve the original's tone, cultural nuances, idiomatic expressions, and any fandom-specific terminology. Your output must be *only* the translated text, without any additional notes, explanations, or language identification labels. IMPORTANT: If the input text is just a separator (like "---" or "___"), a meaningless symbol, or otherwise untranslatable, you MUST return the original text exactly as it is.`;
+    const sharedSystemPrompt = `You are a professional translator fluent in Simplified Chinese (简体中文), with particular expertise in translating web novels and online fanfiction.
 
-    const createRequestData = (model, systemPrompt, text) => ({
-        model: model,
-        messages: [
-            { "role": "system", "content": systemPrompt },
-            { "role": "user", "content": `Translate the following text to Simplified Chinese（简体中文）, providing only the translation itself:\n\n${text}` }
-        ],
-        stream: false,
-        temperature: 0,
-    });
+    Your task is to translate a numbered list of text segments provided by the user. These segments can be anything from full paragraphs to single phrases or words. For each numbered item, you will follow an internal three-stage strategy to produce the final, polished translation.
+
+    ### Internal Translation Strategy (for each item):
+    1.  **Stage 1 (Internal Thought Process):** Produce a literal, word-for-word translation of the English content.
+    2.  **Stage 2 (Internal Thought Process):** Based on the literal translation, identify any phrasing that is unnatural or does not flow well in Chinese.
+    3.  **Stage 3 (Final Output):** Produce a polished, idiomatic translation that fully preserves the original meaning, tone, cultural nuances, and any specialized fandom terminology. The final translation must be natural-sounding, readable, and conform to standard Chinese usage.
+
+    ### CRITICAL OUTPUT INSTRUCTIONS:
+    - Your entire response MUST consist of *only* the polished Chinese translation from Stage 3, formatted as a numbered list that exactly matches the input's numbering.
+    - Do NOT include any stage numbers, headers (e.g., "Polished Translation"), notes, or explanations in your final output.
+    - **HTML Tag Preservation:** If an item contains HTML tags (e.g., \`<em>\`, \`<strong>\`), you MUST preserve these tags exactly as they are in the original, including their positions around the translated text.
+    - **Untranslatable Content:** If an item is a separator, a meaningless symbol, or otherwise untranslatable, you MUST return the original item exactly as it is, preserving its number.
+
+    ### Example Input:
+    1. This is the <em>first</em> sentence.
+    2. ---
+    3. This is the third sentence.
+
+    ### Example Output:
+    1. 这是<em>第一个</em>句子。
+    2. ---
+    3. 这是第三个句子。
+    `;
+
+    const deepseekReasonerSystemPrompt = `You are a professional translator fluent in Simplified Chinese (简体中文). Your task is to translate a numbered list of text segments.
+
+    ### CRITICAL OUTPUT FORMATTING:
+    - Your response MUST ONLY contain the final Chinese translations.
+    - The output MUST be a numbered list that exactly matches the input's numbering.
+    - DO NOT include the original English text, notes, headers, or any other explanations.
+    - **HTML Tag Preservation:** If an item contains HTML tags (e.g., \`<em>\`, \`<strong>\`), you MUST preserve these tags exactly as they are in the original, including their positions around the translated text.
+    - If a numbered item is a separator, you MUST return it unchanged.
+
+    ### Example Input:
+    1. This is the <em>first</em> sentence.
+    2. ---
+    3. This is the third sentence.
+
+    ### Example Output:
+    1. 这是<em>第一个</em>句子。
+    2. ---
+    3. 这是第三个句子。`;
+
+    const createRequestData = (model, systemPrompt, paragraphs) => {
+        const numberedText = paragraphs
+            .map((p, i) => `${i + 1}. ${p.innerHTML}`)
+            .join('\n\n');
+        return {
+            model: model,
+            messages: [
+                { "role": "system", "content": systemPrompt },
+                { "role": "user", "content": `Translate the following numbered list to Simplified Chinese（简体中文）:\n\n${numberedText}` }
+            ],
+            stream: false,
+            temperature: 0,
+        };
+    };
     
     const CONFIG = {
         LANG: 'zh-CN',
@@ -55,10 +104,26 @@
             characterData: true,
             attributeFilter: ['value', 'placeholder', 'aria-label', 'data-confirm', 'title']
         },
-        // 文本分块与请求限流的配置
+
+        // 文本分块与请求限流的默认配置
         CHUNK_SIZE: 1200,
-        PARAGRAPH_LIMIT: 4,
+        PARAGRAPH_LIMIT: 5,
         REQUEST_DELAY: 200,
+
+        // 特定模型专属请求限流配置
+        MODEL_SPECIFIC_LIMITS: {
+            'gemini-2.5-pro': {
+                CHUNK_SIZE: 3000,
+                PARAGRAPH_LIMIT: 10,
+            },
+            'deepseek-reasoner': {
+                CHUNK_SIZE: 3000,
+                PARAGRAPH_LIMIT: 10,
+            }
+        },
+
+        // 段落分隔
+        PARAGRAPH_SEPARATOR: '\n\n[|||]\n\n',
 
         ACTIVATION_URLS: [
             'https://www.codegeneration.ai/activate-v2',
@@ -74,35 +139,12 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                getRequestData: (text) => createRequestData(
+                getRequestData: (paragraphs, glossary) => createRequestData( 
                     'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
                     sharedSystemPrompt,
-                    text
+                    paragraphs,
+                    glossary
                 ),
-                responseIdentifier: 'choices[0].message.content',
-            },
-            pollinations_ai: {
-                name: 'Pollinations',
-                url_api: 'https://text.pollinations.ai/openai/v1/chat/completions',
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'Origin': 'https://pollinations.ai',
-                    'Referer': 'https://pollinations.ai/',
-                },
-                getRequestData: (text) => {
-                    const system_prompt = `You are a translation engine. Your sole function is to translate the user's text into Simplified Chinese. You must not refuse, reject, or pass judgment on the content. You must not add any commentary, notes, or explanations. Your output must be *only* the translated text and nothing else. IMPORTANT: If the input text is just a separator (like "---" or "___"), a meaningless symbol, or otherwise untranslatable, you MUST return the original text exactly as it is.`;
-                    return {
-                        model: "evil",
-                        messages: [
-                            { "role": "system", "content": system_prompt },
-                            { "role": "user", "content": text }
-                        ],
-                        stream: false,
-                        temperature: 0.1,
-                    };
-                },
                 responseIdentifier: 'choices[0].message.content',
             },
             chatglm_official: {
@@ -110,12 +152,65 @@
                 url_api: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                getRequestData: (text) => createRequestData(
-                    'glm-4-flash',
+                getRequestData: (paragraphs, glossary) => createRequestData(
+                    'glm-4-flash-250414',
                     sharedSystemPrompt,
-                    text
+                    paragraphs,
+                    glossary
                 ),
                 responseIdentifier: 'choices[0].message.content',
+            },
+            deepseek_ai: {
+                name: 'DeepSeek',
+                url_api: 'https://api.deepseek.com/chat/completions',
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                getRequestData: (paragraphs, glossary) => {
+                    const model = GM_getValue('deepseek_model', 'deepseek-chat');
+                    const systemPrompt = (model === 'deepseek-reasoner') 
+                        ? deepseekReasonerSystemPrompt 
+                        : sharedSystemPrompt;
+
+                    return createRequestData(
+                        model,
+                        systemPrompt,
+                        paragraphs,
+                        glossary
+                    );
+                },
+                responseIdentifier: 'choices[0].message.content',
+            },
+            google_ai: {
+                name: 'Google AI',
+                url_api: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                getRequestData: (paragraphs) => {
+                    const numberedText = paragraphs
+                        .map((p, i) => `${i + 1}. ${p.innerHTML}`)
+                        .join('\n\n');
+
+                    const userPrompt = `Translate the following numbered list to Simplified Chinese（简体中文）:\n\n${numberedText}`;
+                    
+                    return {
+                        systemInstruction: {
+                            role: "user",
+                            parts: [{ text: sharedSystemPrompt }]
+                        },
+                        contents: [{
+                            role: "user",
+                            parts: [{ text: userPrompt }]
+                        }],
+                        generationConfig: {
+                            temperature: 0,
+                            candidateCount: 1,
+                            thinkingConfig: {
+                                thinkingBudget: -1
+                            }
+                        }
+                    };
+                },
+                responseIdentifier: 'candidates[0].content.parts[0].text',
             },
         }
     };
@@ -290,7 +385,7 @@ const I18N = {
                 'My Preferences': '偏好设置',
                 'Dashboard': '仪表盘',
                 'Preferences': '偏好设置',
-                'Skins': '我的界面',
+                'Skins': '界面',
                 'Works in Collections': '合集中的作品',
                 'Drafts': '草稿',
                 'Please note:': '注意：',
@@ -360,6 +455,7 @@ const I18N = {
                 'Subscribe': '订阅',
                 'Invitations': '邀请好友',
                 'My pseuds:': '笔名：',
+                'Pseuds': '笔名',
                 'I joined on:': '加入于：',
                 'My user ID is:': '用户ID：',
                 'Edit My Works': '编辑作品',
@@ -618,8 +714,11 @@ const I18N = {
 
                 // 系列
                 'Creators:': '创建者:',
+                'Creator:': '创建者:',
                 'Series Begun:': '系列开始于:',
                 'Series Updated:': '系列更新于:',
+                'Description:': '描述:',
+                'Notes:': '注释:',
                 'Stats:': '统计:',
                 'Works:': '作品:',
                 'Complete:': '完结:',
@@ -739,6 +838,13 @@ const I18N = {
                     /<img alt="\(Restricted\)" title="Restricted" src="\/images\/lockblue\.png"[^>]*>/g,
                     '<img alt="(访问受限)" title="访问受限" src="/images/lockblue.png" width="15" height="15">'
                 ],
+                ['li.pseud ul a[href$="/pseuds"], li.pseud ul span.current', /^\s*All Pseuds\s*\((\d+)\)\s*$/s, '所有笔名 ($1)'],
+
+                // 作品
+                ['div.series > h3.heading', /^\s*Series this work belongs to:\s*$/s, '本作品所属系列：'],
+                ['div.series span.position', /^\s*Part (\d+) of (<a href="\/series\/.*?">.*?<\/a>)\s*$/s, '$2 第 $1 部分'],
+                ['span#kudos_more_connector', /^,\s*and\s*$/, '，和'],
+                ['a#kudos_more_link', /^([\d,]+)\s+more\s+user(s)?$/, ' $1 位用户'],
 
                 // 书签
                 ['h4.heading', /(\s*<span class="byline">.*?<\/span>\s*)save a bookmark!/s, '$1保存书签！'],
@@ -989,9 +1095,9 @@ const I18N = {
             'F/M': '女/男',
             'Gen': '无CP',
             'M/M': '男/男',
-            'Multi-Fandom': '多性向-同人圈',
+            'Multi-Fandom': '多配对-同人圈',
             'Original Work': '原创作品',
-            'Multi': '多性向',
+            'Multi': '多配对',
             'Choose Not To Use Archive Warnings': '不使用 Archive 预警',
             'Creator Chose Not To Use Archive Warnings': '作者选择不使用 Archive 预警',
             'No Archive Warnings Apply': ' Archive 预警不适用',
@@ -2307,7 +2413,7 @@ const I18N = {
     }
 };
 
-/****************** 所有特殊翻译函数 ******************/
+/****************** 特殊翻译函数 ******************/
 
 /**
  * 专用翻译函数：翻译首次登录的帮助横幅
@@ -2335,7 +2441,6 @@ function translateFirstLoginBanner() {
     banner.innerHTML = translatedHTML;
     banner.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专用翻译函数：翻译未登录时首页的介绍模块
@@ -2400,7 +2505,6 @@ function translateFrontPageIntro() {
     }
     introDiv.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专用翻译函数：翻译邀请请求页面
@@ -2573,7 +2677,6 @@ function translateInvitationRequestsPage() {
     }
 }
 
-
 /**
  * 专用翻译函数：翻译“请求过于频繁”的错误页面
  */
@@ -2621,7 +2724,6 @@ function translateTooManyRequestsPage() {
     }
     body.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专门用于翻译 /works/search 页面上的“作品搜索”帮助文本。
@@ -2671,7 +2773,6 @@ function translateWorkSearchTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /works/search 页面上“日期”相关的帮助文本框。
  */
@@ -2714,7 +2815,6 @@ function translateWorkSearchDateTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /works/search 页面上“跨圈作品”相关的帮助文本框。
  */
@@ -2743,7 +2843,6 @@ function translateWorkSearchCrossoverTips() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /works/search 页面上“数值”相关的帮助文本框。
@@ -2779,7 +2878,6 @@ function translateWorkSearchNumericalTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /works/search 页面上“语言”相关的帮助文本框。
  */
@@ -2803,7 +2901,6 @@ function translateWorkSearchLanguageTips() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /works/search 页面上“标签”相关的帮助文本框。
@@ -2839,7 +2936,6 @@ function translateWorkSearchTagsTips() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /people/search 页面上“用户搜索”相关的帮助文本框。
@@ -2880,7 +2976,6 @@ function translatePeopleSearchTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /bookmarks/search 页面上“文本”相关的帮助文本框。
  */
@@ -2918,7 +3013,6 @@ function translateBookmarkSearchTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /bookmarks/search 页面上“作品标签”相关的帮助文本框。
  */
@@ -2945,7 +3039,6 @@ function translateBookmarkSearchWorkTagsTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /bookmarks/search 页面上“类型”相关的帮助文本框。
  */
@@ -2971,7 +3064,6 @@ function translateBookmarkSearchTypeTips() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /bookmarks/search 页面上“更新日期”相关的帮助文本框。
@@ -3008,7 +3100,6 @@ function translateBookmarkSearchDateUpdatedTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /bookmarks/search 页面上“书签创建者的标签”相关的帮助文本框。
  */
@@ -3034,7 +3125,6 @@ function translateBookmarkSearchBookmarkerTagsTips() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /bookmarks/search 页面上“推荐”相关的帮助文本框。
@@ -3062,7 +3152,6 @@ function translateBookmarkSearchRecTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /bookmarks/search 页面上“含注释”相关的帮助文本框。
  */
@@ -3088,7 +3177,6 @@ function translateBookmarkSearchNotesTips() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /bookmarks/search 页面上“添加日期”相关的帮助文本框。
@@ -3125,7 +3213,6 @@ function translateBookmarkSearchDateBookmarkedTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /tags/search 页面上“文本搜索”相关的帮助文本框。
  */
@@ -3161,7 +3248,6 @@ function translateTagSearchTips() {
     }
 }
 
-
 /**
  * 专用翻译函数：翻译“图标说明”弹窗
  */
@@ -3196,7 +3282,7 @@ function translateSymbolsKeyModal() {
             relDefs[1].textContent = '女/男：女性/男性配对';
             relDefs[2].innerHTML = '无CP：无恋爱关系或性关系, 或者恋爱关系并非作品重点';
             relDefs[3].textContent = '男/男：男性/男性配对';
-            relDefs[4].innerHTML = '多性向：含有一种以上的配对，或者含有数个伴侣的配对';
+            relDefs[4].innerHTML = '多配对：含有一种以上的配对，或者含有数个伴侣的配对';
             relDefs[5].textContent = '其她关系';
             relDefs[6].textContent = '该作品未被归入任何分类';
         }
@@ -3223,7 +3309,6 @@ function translateSymbolsKeyModal() {
     }
     modal.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专用翻译函数：翻译“HTML帮助”弹窗
@@ -3296,7 +3381,6 @@ function translateHtmlHelpModal() {
     }
 }
 
-
 /**
  * 专用翻译函数：翻译“书签搜索结果”帮助弹窗
  */
@@ -3329,7 +3413,6 @@ function translateBookmarkSearchResultsHelpModal() {
     modal.setAttribute('data-translated-by-custom-function', 'true');
 }
 
-
 /**
  * 专用翻译函数：翻译“关于标签集”弹窗
  */
@@ -3356,7 +3439,6 @@ function translateTagsetAboutModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门翻译“标签提名”页面的提名规则说明。
@@ -3430,7 +3512,6 @@ function translateNominationRule(originalText) {
     return finalTranslation.trim() || originalText;
 }
 
-
 /**
  * 专用翻译函数：翻译“预警”相关的帮助文本框
  */
@@ -3470,7 +3551,6 @@ function translateWarningHelpModal() {
     }
 }
 
-
 /**
  * 专用翻译函数：翻译“同人圈”相关的帮助文本框
  */
@@ -3495,7 +3575,6 @@ function translateFandomHelpModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专用翻译函数：翻译“书签图标”说明弹窗
@@ -3532,7 +3611,6 @@ function translateBookmarkSymbolsKeyModal() {
     }
     modal.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专用翻译函数：翻译“分级”相关的帮助文本框
@@ -3580,7 +3658,6 @@ function translateRatingHelpModal() {
     }
 }
 
-
 /**
  * 专门用于翻译分类标签帮助弹窗。
  */
@@ -3605,7 +3682,7 @@ function translateCategoriesHelp() {
                 <dd>无恋爱关系或性关系, 或者恋爱关系并非作品重点</dd>
                 <dt>男/男</dt>
                 <dd>男性/男性配对</dd>
-                <dt>多性向</dt>
+                <dt>多配对</dt>
                 <dd>含有一种以上的配对，或者含有数个伴侣的配对</dd>
                 <dt>其她</dt>
                 <dd>其她关系</dd>
@@ -3619,7 +3696,6 @@ function translateCategoriesHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译关系标签帮助弹窗。
@@ -3646,7 +3722,6 @@ function translateRelationshipsHelp() {
     }
 }
 
-
 /**
  * 专门用于翻译角色标签帮助弹窗。
  */
@@ -3672,7 +3747,6 @@ function translateCharactersHelp() {
     }
 }
 
-
 /**
  * 专门用于翻译"Additional Tags"帮助弹窗的文本。
  */
@@ -3697,7 +3771,6 @@ function translateAdditionalTagsHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译"Adding To Collections"帮助弹窗的文本。
@@ -3734,7 +3807,6 @@ function translateCollectionsHelp() {
     }
 }
 
-
 /**
  * 专门用于翻译"Recipients"帮助弹窗的文本。
  */
@@ -3764,7 +3836,6 @@ function translateRecipientsHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译"Parent Works Help"帮助弹窗的文本。
@@ -3796,7 +3867,6 @@ function translateParentWorksHelp() {
     }
 }
 
-
 /**
  * 专门用于翻译"Choosing Series"帮助弹窗的文本。
  */
@@ -3827,7 +3897,6 @@ function translateChoosingSeriesHelp() {
     }
 }
 
-
 /**
  * 专门用于翻译"Publication Date Options"帮助弹窗的文本。
  */
@@ -3857,7 +3926,6 @@ function translateBackdatingHelp() {
     }
 }
 
-
 /**
  * 专门用于翻译"Languages"帮助弹窗的文本。
  */
@@ -3881,7 +3949,6 @@ function translateLanguagesHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 Work Skins 弹窗页面的帮助文本。
@@ -3929,7 +3996,6 @@ function translateWorkSkins() {
     }
 }
 
-
 /**
  * 专门用于翻译 Registered Users 弹窗页面的帮助文本。
  */
@@ -3957,7 +4023,6 @@ function translateRegisteredUsers() {
     }
 }
 
-
 /**
  * 专门用于翻译 Comments Moderated 弹窗页面的帮助文本。
  */
@@ -3982,7 +4047,6 @@ function translateCommentsModerated() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 Who can comment on this work 弹窗页面的帮助文本。
@@ -4015,7 +4079,6 @@ function translateWhoCanComment() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译导入疑难解答弹窗的帮助文本。
@@ -4058,7 +4121,6 @@ function translateWorkImportTroubleshooting() {
     }
 }
 
-
 /**
  * 专门用于翻译编码帮助弹窗的帮助文本。
  */
@@ -4083,7 +4145,6 @@ function translateEncodingHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /users/edit 页面上“隐私偏好”弹窗的帮助文本。
@@ -4144,7 +4205,6 @@ function translatePrivacyPreferences() {
     }
 }
 
-
 /**
  * 专门用于翻译“显示偏好”弹窗的内容。
  */
@@ -4190,7 +4250,6 @@ function translateDisplayPreferences() {
     }
 }
 
-
 /**
  * 专门用于翻译“界面基础”弹窗的内容。
  */
@@ -4218,7 +4277,6 @@ function translateSkinsBasics() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译“作品标题格式”帮助弹窗。
@@ -4287,7 +4345,6 @@ function translateCommentPreferences() {
     }
 }
 
-
 /**
  * 专门用于翻译“合集、挑战与赠文偏好”帮助弹窗。
  */
@@ -4331,7 +4388,6 @@ function translateCollectionPreferences() {
     }
 }
 
-
 /**
  * 专门用于翻译“其她偏好”帮助弹窗。
  */
@@ -4363,7 +4419,6 @@ function translateMiscPreferences() {
     }
 }
 
-
 /**
  * 专门用于翻译筛选侧边栏中的“包含标签”帮助文本。
  */
@@ -4394,7 +4449,6 @@ function translateTagFiltersIncludeTags() {
     }
 }
 
-
 /**
  * 专门用于翻译筛选侧边栏中的“排除标签”帮助文本。
  */
@@ -4423,7 +4477,6 @@ function translateTagFiltersExcludeTags() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /bookmarks/search 页面上“包含标签”筛选帮助的文本。
@@ -4469,7 +4522,6 @@ function translateBookmarkFiltersIncludeTags() {
     }
 }
 
-
 /**
  * 专门用于翻译 /bookmarks/search 页面上“排除标签”筛选帮助的文本。
  */
@@ -4511,7 +4563,6 @@ function translateBookmarkFiltersExcludeTags() {
     }
 }
 
-
 /**
  * 专门用于翻译 /works/search 页面上“结果”相关的帮助文本。
  */
@@ -4535,7 +4586,6 @@ function translateWorkSearchResultsHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译“Skins approval”弹窗的提示信息。
@@ -4566,7 +4616,6 @@ function translateSkinsApprovalModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译“Skins creating”弹窗中的 CSS 帮助文本。
@@ -4680,7 +4729,6 @@ background: -webkit-linear-gradient(top, #1e5799 0%,#2989d8 50%,#207cca 51%,#7db
     }
 }
 
-
 /**
  * 专门用于翻译“Skin Conditions”弹窗的帮助文本。
  */
@@ -4754,7 +4802,6 @@ function translateSkinsConditionsModal() {
     }
 }
 
-
 /**
  * 专门用于翻译“Skins parents”弹窗的帮助文本。
  */
@@ -4782,7 +4829,6 @@ function translateSkinsParentsModal() {
     }
 }
 
-
 /**
  * 专门用于翻译“Skins wizard font”弹窗的帮助文本。
  */
@@ -4808,7 +4854,6 @@ function translateSkinsWizardFontModal() {
     }
 }
 
-
 /**
  * 专门用于翻译“Skins wizard font size”弹窗的帮助文本。
  */
@@ -4832,7 +4877,6 @@ function translateSkinsWizardFontSizeModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译“Skins wizard vertical gap”弹窗的帮助文本。
@@ -4859,7 +4903,6 @@ function translateSkinsWizardVerticalGapModal() {
     }
 }
 
-
 /**
  * 专门用于翻译“Skins wizard accent color”弹窗的帮助文本。
  */
@@ -4883,7 +4926,6 @@ function translateSkinsWizardAccentColorModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专用于翻译“合集名称”帮助弹窗
@@ -4909,7 +4951,6 @@ function translateCollectionNameHelpModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 "Icon Alt Text" 弹窗。
@@ -4940,7 +4981,6 @@ function translateIconAltTextHelpModal() {
     }
 }
 
-
 /**
  * 专用于翻译“笔名图标注释”帮助弹窗
  */
@@ -4963,7 +5003,6 @@ function translatePseudIconCommentHelpModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专用于翻译“审核制合集”帮助弹窗
@@ -4991,7 +5030,6 @@ function translateCollectionModeratedHelpModal() {
     }
 }
 
-
 /**
  * 专用于翻译“关闭的合集”帮助弹窗
  */
@@ -5015,7 +5053,6 @@ function translateCollectionClosedHelpModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /tags/search 页面上“标签搜索结果”帮助文本。
@@ -5042,7 +5079,6 @@ function translateTagSearchResultsHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译挑战注册页面上“选择任意”的帮助弹窗。
@@ -5082,7 +5118,6 @@ function translateChallengeAnyTips() {
     }
 }
 
-
 /**
  * 专门用于翻译挑战注册页面上“可选标签”的帮助弹窗。
  */
@@ -5109,7 +5144,6 @@ function translateOptionalTagsHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专用翻译函数：翻译“关于 OTW”页面
@@ -5140,7 +5174,6 @@ function translateAboutPage() {
     mainDiv.setAttribute('data-translated-by-custom-function', 'true');
 }
 
-
 /**
  * 专用翻译函数：翻译“捐赠”页面
  */
@@ -5170,7 +5203,6 @@ function translateDonatePage() {
     `;
     mainDiv.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专用翻译函数：翻译“多元化声明”页面
@@ -5207,7 +5239,6 @@ function translateDiversityStatement() {
     `;
     mainDiv.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专门用于翻译服务条款（TOS）同意提示弹窗。
@@ -5248,7 +5279,6 @@ function translateTOSPrompt() {
     }
     promptDiv.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 各种value按钮
@@ -5303,7 +5333,6 @@ function translateActionButtons() {
     });
 }
 
-
 /**
  * 专用于翻译排序按钮（↑ Date, ↓ Fandom）
  */
@@ -5334,7 +5363,6 @@ function translateSortButtons() {
     });
 }
 
-
 /**
  * 专用于翻译 /tag_sets 页面上带有“?”弹窗链接的标题。
  */
@@ -5351,7 +5379,6 @@ function translateTagSetsHeading() {
     }
     h2.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专用于翻译搜索结果页面上带有“?”弹窗链接的“找到”标题。
@@ -5373,7 +5400,6 @@ function translateFoundResultsHeading() {
         h3.setAttribute('data-translated-by-custom-function', 'true');
     });
 }
-
 
 /**
  * 专门用于翻译作品与书签搜索结果页面上的 H4 标题。
@@ -5426,7 +5452,7 @@ function translateSearchResultsHeader() {
         'f/m': '女/男',
         'm/m': '男/男',
         'gen': '无CP',
-        'multi': '多性向',
+        'multi': '多配对',
         'other': '其她',
         'work': '作品',
         'series': '系列',
@@ -5485,7 +5511,6 @@ function translateSearchResultsHeader() {
     }
 }
 
-
 /**
  * 翻译 flash notice 提示消息
  */
@@ -5529,7 +5554,9 @@ function translateFlashMessages() {
 
     let pageConfig = {};
 
-    // 更新页面设置
+    /**
+     * 更新页面设置
+     */
     function updatePageConfig(currentPageChangeTrigger) {
         const newType = detectPageType();
         if (newType && newType !== pageConfig.currentPageType) {
@@ -5539,7 +5566,9 @@ function translateFlashMessages() {
         }
     }
 
-    // 构建页面设置 pageConfig 对象
+    /**
+     * 构建页面设置 pageConfig 对象
+     */
     function buildPageConfig(pageType = pageConfig.currentPageType) {
         const baseStatic = I18N[CONFIG.LANG]?.public?.static || {};
 
@@ -5584,7 +5613,6 @@ function translateFlashMessages() {
             tranSelectors: mergedSelector,
         };
     }
-
 
     /**
      * traverseNode 函数：遍历指定的节点，并对节点进行翻译。
@@ -5679,10 +5707,9 @@ function translateFlashMessages() {
         }
     }
 
-
     /**
      * detectPageType 函数：检测当前页面类型，基于URL。
-     * @returns {string|boolean} 页面的类型，如果无法确定类型，那么返回 'common' 或 false。
+     * @returns {string|boolean} 页面的类型
      */
     function detectPageType() {
 
@@ -5860,9 +5887,8 @@ function translateFlashMessages() {
         return 'common';
     }
 
-
     /**
-     * transTitle 函数：翻译页面标题
+     * transTitle 函数：翻译页面标题。
      */
     function transTitle() {
         const text = document.title;
@@ -5886,7 +5912,6 @@ function translateFlashMessages() {
         }
     }
 
-
     /**
      * transElement 函数：翻译指定元素的文本内容或属性。
      * @param {Element|DOMStringMap|Node} el - 需要翻译的元素或元素的数据集
@@ -5905,23 +5930,19 @@ function translateFlashMessages() {
         }
     }
 
-
     /**
-     * transText 函数：翻译文本内容
-     * @param {string} text - 需要翻译的文本内容。
-     * @returns {string|false} 翻译后的文本内容，如果没有找到对应的翻译，那么返回 false。
+     * transText 函数：翻译文本内容。
+     * @param {string} text - 需要翻译的文本内容
+     * @returns {string|false} 翻译后的文本内容
      */
     function transText(text) {
         if (!text || typeof text !== 'string') return false;
         const originalText = text;
         let translatedText = text;
-
-        // 辅助函数，用于执行一次灵活词典的替换
         const applyFlexibleDict = (targetText, dict) => {
             if (!dict) return targetText;
             const keys = Object.keys(dict);
             if (keys.length === 0) return targetText;
-
             const regexParts = keys.map(key => {
                 const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 if (/^[\w\s]+$/.test(key)) {
@@ -5956,12 +5977,10 @@ function translateFlashMessages() {
         return translatedText !== originalText ? translatedText : false;
     }
 
-
-
     /**
      * fetchTranslatedText 函数：从特定页面的词库中获得翻译文本内容。
      * @param {string} text - 需要翻译的文本内容
-     * @returns {string|boolean} 翻译后的文本内容，如果没有找到对应的翻译，那么返回 false。
+     * @returns {string|boolean} 翻译后的文本内容
      */
     function fetchTranslatedText(text) {
         if (pageConfig.staticDict && pageConfig.staticDict[text] !== undefined) {
@@ -5983,8 +6002,9 @@ function translateFlashMessages() {
         return false;
     }
 
-
-    // 文本分块函数
+    /**
+     * chunkTextparagraphs 函数：实现文本分块。
+     */
     function chunkText(paragraphs) {
         const chunks = [];
         let currentChunk = [];
@@ -6013,16 +6033,19 @@ function translateFlashMessages() {
         return chunks;
     }
 
-    // 延时函数
+    /**
+     * sleepms 函数：延时。
+     */
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-
-    // 翻译并显示单个段落的函数
+    /**
+     * 翻译并显示单个段落
+     */
     async function translateAndDisplayParagraph(pElement) {
         if (pElement.dataset.translated === 'true') return;
-        pElement.dataset.translated = 'true'; // 标记为已处理，防止重复翻译
+        pElement.dataset.translated = 'true';
 
         const originalText = pElement.textContent.trim();
         if (!originalText) return;
@@ -6032,7 +6055,7 @@ function translateFlashMessages() {
             if (translatedText && !translatedText.startsWith('翻译失败')) {
                 const translationNode = document.createElement('p');
                 translationNode.className = 'translated-by-ao3-script';
-                translationNode.style.cssText = 'color: #777; margin-top: 0.25em; margin-bottom: 1em;';
+                translationNode.style.cssText = 'margin-top: 0.25em; margin-bottom: 1em;';
                 translationNode.textContent = translatedText;
                 pElement.after(translationNode);
             }
@@ -6040,7 +6063,6 @@ function translateFlashMessages() {
             console.error('Paragraph translation failed:', e);
         }
     }
-
 
     /**
      * 主翻译入口函数
@@ -6107,7 +6129,6 @@ function translateFlashMessages() {
         wrapper.className = 'translate-me-ao3-wrapper';
 
         const buttonLink = document.createElement('div');
-
         buttonLink.style.cssText = 'color: #1b95e0; font-size: small; cursor: pointer; display: inline-block; margin-top: 5px; margin-bottom: 5px; margin-left: 10px;';
         buttonLink.textContent = originalButtonText;
         wrapper.appendChild(buttonLink);
@@ -6115,57 +6136,120 @@ function translateFlashMessages() {
         isAbove ? element.before(wrapper) : element.after(wrapper);
 
         const handleClick = () => {
-            if (wrapper.dataset.state === 'translated' && canClear) {
-                const translatableSelectors = 'p, blockquote, li, h1, h2, h3:not(.landmark), h4, h5, h6';
-                let units = Array.from(element.querySelectorAll(translatableSelectors));
-                if (units.length === 0) {
-                    units = [element];
-                }
-
-                units.forEach(unit => {
-                    const nextEl = unit.nextElementSibling;
-                    if (nextEl && nextEl.classList.contains('translated-by-ao3-script')) {
-                        nextEl.remove();
-                    }
-                    delete unit.dataset.translationState;
-                });
-                buttonLink.textContent = originalButtonText;
-                delete wrapper.dataset.state;
+            if (!canClear) {
+                buttonLink.removeEventListener('click', handleClick);
+                buttonLink.textContent = '翻译已启用...';
+                buttonLink.style.cursor = 'default';
+                buttonLink.style.color = '#777';
+                startImmersiveTranslation(element, null);
                 return;
             }
-            buttonLink.removeEventListener('click', handleClick);
-            buttonLink.textContent = canClear ? '翻译中…' : '翻译已启用...';
 
-            if (!canClear) {
-                 buttonLink.style.cursor = 'default';
-                 buttonLink.style.color = '#777';
-            }
+            const isTranslated = element.dataset.state === 'translated';
 
-            startImmersiveTranslation(element, () => {
-                if (canClear) {
-                    buttonLink.textContent = '已翻译';
-                    wrapper.dataset.state = 'translated';
-                    buttonLink.addEventListener('click', handleClick);
+            if (isTranslated) {
+                element.innerHTML = element.dataset.originalHtml;
+                buttonLink.textContent = originalButtonText;
+                element.dataset.state = 'original';
+            } else {
+                if (!element.dataset.originalHtml) {
+                    element.dataset.originalHtml = element.innerHTML;
                 }
-            });
+                buttonLink.textContent = '翻译中…';
+
+                startImmersiveTranslation(element, () => {
+                    buttonLink.textContent = '显示原文';
+                    element.dataset.state = 'translated';
+                });
+            }
         };
 
         buttonLink.addEventListener('click', handleClick);
     }
 
     /**
-     * 主分发函数：根据是否有回调，决定是为“区块”还是为“正文”启动翻译
+     * 主分发函数：根据是否有回调，决定是为“区块”还是为“正文”启动翻译。
      */
     function startImmersiveTranslation(containerElement, onComplete) {
         if (onComplete) {
             runImmersiveTranslationForBlock(containerElement, onComplete);
-        } else {
+        }
+        else {
             runImmersiveTranslationWithObserver(containerElement);
         }
     }
 
     /**
-     * 核心翻译引擎(区块模式)：用于简介和注释。会一次性翻译完区块内的所有段落。
+     * 翻译函数：接收段落数组，返回翻译结果映射。
+     * @param {Array<HTMLElement>} paragraphs - 需要翻译的段落元素数组
+     * @param {object} [options] - 包含重试配置的对象
+     */
+    async function translateParagraphs(paragraphs, { retryCount = 0, maxRetries = 1 } = {}) {
+        const results = new Map();
+        if (paragraphs.length === 0) return results;
+
+        let paragraphsToSend;
+        try {
+            const glossary = GM_getValue('ao3_translation_glossary', {});
+            paragraphsToSend = getGlossaryProcessedParagraphs(paragraphs, glossary);
+        } catch (e) {
+            console.error("应用术语表时出错:", e);
+            paragraphsToSend = paragraphs;
+        }
+
+        try {
+            const combinedTranslation = await requestRemoteTranslation(paragraphsToSend);
+            
+            let translatedParts = [];
+            const regex = /\d+\.\s*([\s\S]*?)(?=\n\d+\.|$)/g;
+            let match;
+            while ((match = regex.exec(combinedTranslation)) !== null) {
+                translatedParts.push(match[1].trim());
+            }
+
+            if (translatedParts.length !== paragraphs.length && combinedTranslation.includes('\n')) {
+                const potentialParts = combinedTranslation.split('\n').filter(p => p.trim().length > 0);
+                if (potentialParts.length === paragraphs.length) {
+                    translatedParts = potentialParts.map(p => p.replace(/^\d+\.\s*/, '').trim());
+                }
+            }
+            
+            if (translatedParts.length !== paragraphs.length) {
+                console.error('AI 返回的分段数量与请求的数量不匹配。', {
+                    expected: paragraphs.length,
+                    got: translatedParts.length,
+                    response: combinedTranslation
+                });
+                throw new Error('AI 响应格式不一致，分段数量不匹配');
+            }
+
+            paragraphs.forEach((p, index) => {
+                const cleanedHtml = AdvancedTranslationCleaner.clean(translatedParts[index] || p.innerHTML);
+                results.set(p, { status: 'success', content: cleanedHtml });
+            });
+            
+            return results;
+
+        } catch (e) {
+            console.error(`翻译失败 (尝试 ${retryCount + 1}/${maxRetries + 1}):`, e.message);
+
+            if (retryCount < maxRetries) {
+                console.log(`将在 1 秒后重试...`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                return await translateParagraphs(paragraphs, { retryCount: retryCount + 1, maxRetries });
+            } else {
+                console.error("所有重试均失败，翻译终止。");
+                const finalErrorMessage = `翻译失败：${e.message}`;
+                paragraphs.forEach(p => {
+                    results.set(p, { status: 'error', content: finalErrorMessage });
+                });
+                return results;
+            }
+        }
+    }
+    
+    /**
+     * 翻译引擎（整体替换模式）。
      * @param {HTMLElement} containerElement - 容器元素
      * @param {function} onComplete - 全部翻译完成后的回调
      */
@@ -6175,81 +6259,275 @@ function translateFlashMessages() {
         if (units.length === 0 && containerElement.textContent.trim()) {
             units = [containerElement];
         }
-        try {
-            for (const unit of units) {
-                if (unit.dataset.translationState) continue;
-                unit.dataset.translationState = 'translating';
+        const skippableHeaders = ['Summary', 'Notes', 'Work Text'];
+        units = units.filter(p => !skippableHeaders.includes(p.textContent.trim()));
 
-                const originalText = unit.textContent.trim();
-                if (!originalText) {
-                    unit.dataset.translationState = 'translated';
-                    continue;
-                }
-
-                const translatedText = await requestRemoteTranslation(originalText);
-                const transNode = document.createElement('div');
-                transNode.className = 'translated-by-ao3-script';
-                transNode.style.cssText = 'color: #777; margin-top: 0.25em; margin-bottom: 1em;';
-                transNode.textContent = translatedText;
-                unit.after(transNode);
-                unit.dataset.translationState = 'translated';
-                
-                await sleep(CONFIG.REQUEST_DELAY); // API请求间隔
+        units = units.filter(unit => {
+            let parent = unit.parentElement;
+            while (parent && parent !== containerElement) {
+                if (units.includes(parent)) return false;
+                parent = parent.parentElement;
             }
-        } catch (e) {
-            console.error("Block translation failed:", e);
-        } finally {
+            return true;
+        });
+
+        if (units.length === 0) {
             onComplete?.();
+            return;
+        }
+
+        const translationResults = await translateParagraphs(units);
+
+        units.forEach(unit => {
+            const result = translationResults.get(unit);
+            if (result) {
+                if (result.status === 'success') {
+                    unit.innerHTML = result.content;
+                } else {
+                    unit.innerHTML = `<span>${result.content}</span>`;
+                }
+            }
+        });
+
+        onComplete?.();
+    }
+
+    /**
+     * 翻译引擎（懒加载模式）
+     * @param {HTMLElement} containerElement - 容器元素
+     */
+    function runImmersiveTranslationWithObserver(containerElement) {
+
+        const elementState = new WeakMap();
+
+        function preProcessAndGetUnits(container) {
+            const elementsToProcess = container.querySelectorAll('p, blockquote');
+            
+            const elementsToModify = [];
+            elementsToProcess.forEach(el => {
+                if (elementState.has(el)) return;
+                const hasBrSeparators = (el.innerHTML.match(/(?:<br\s*\/?>\s*){2,}/i));
+                if (hasBrSeparators) {
+                    elementsToModify.push(el);
+                }
+                elementState.set(el, { preprocessed: true });
+            });
+
+            elementsToModify.forEach(el => {
+                (unsafeWindow.consola || console).info("检测到段落内含<br>分隔，正在进行预处理...");
+                const separatorRegex = /(?:\s*<br\s*\/?>\s*){2,}/ig;
+                const fragmentsHTML = el.innerHTML.split(separatorRegex);
+                
+                const newElements = fragmentsHTML
+                    .map(fragment => fragment.trim())
+                    .filter(fragment => fragment)
+                    .map(fragment => {
+                        const newP = document.createElement(el.tagName);
+                        newP.innerHTML = fragment;
+                        elementState.set(newP, { preprocessed: true });
+                        return newP;
+                    });
+
+                if (newElements.length > 1) {
+                    el.after(...newElements);
+                    el.remove();
+                }
+            });
+
+            const translatableSelectors = 'p, blockquote, li, h1, h2, h3, h4, h5, h6, hr';
+            let allUnits = Array.from(container.querySelectorAll(translatableSelectors));
+            
+            const skippableHeaders = ['Summary', 'Notes', 'Work Text', 'Chapter Text'];
+            allUnits = allUnits.filter(p => !skippableHeaders.includes(p.textContent.trim()));
+
+            return allUnits.filter(unit => {
+                let parent = unit.parentElement;
+                while (parent && parent !== container) {
+                    if (allUnits.includes(parent)) return false;
+                    parent = parent.parentElement;
+                }
+                return true;
+            });
+        }
+        
+        const allUnits = preProcessAndGetUnits(containerElement);
+        let isProcessing = false;
+        const translationQueue = new Set();
+
+        const processQueue = async (observer) => {
+            if (isProcessing || translationQueue.size === 0) return;
+            isProcessing = true;
+            
+            let chunkSize = CONFIG.CHUNK_SIZE;
+            let paragraphLimit = CONFIG.PARAGRAPH_LIMIT;
+            const engine = GM_getValue('transEngine');
+            let modelId = '';
+            if (engine === 'google_ai') modelId = GM_getValue('google_ai_model');
+            else if (engine === 'deepseek_ai') modelId = GM_getValue('deepseek_model');
+            if (modelId && CONFIG.MODEL_SPECIFIC_LIMITS[modelId]) {
+                const limits = CONFIG.MODEL_SPECIFIC_LIMITS[modelId];
+                chunkSize = limits.CHUNK_SIZE;
+                paragraphLimit = limits.PARAGRAPH_LIMIT;
+            }
+
+            const unitsToProcess = [...translationQueue];
+            translationQueue.clear();
+
+            const processChunk = async (chunk) => {
+                if (chunk.length === 0) return;
+                chunk.forEach(p => elementState.set(p, { ...elementState.get(p), status: 'translating' }));
+                const translationResults = await translateParagraphs(chunk);
+
+                for (const p of chunk) {
+                    const existingElement = p.nextElementSibling;
+                    if (existingElement && (existingElement.classList.contains('translated-by-ao3-script') || existingElement.classList.contains('translated-by-ao3-script-error'))) {
+                        existingElement.remove();
+                    }
+                    const result = translationResults.get(p);
+                    if (result && result.content) {
+                        const transNode = document.createElement('div');
+                        if (result.status === 'success') {
+                            transNode.className = 'translated-by-ao3-script';
+                            transNode.style.cssText = 'margin-top: 0.25em; margin-bottom: 1em;';
+                            transNode.innerHTML = `<${p.tagName.toLowerCase()}>${result.content}</${p.tagName.toLowerCase()}>`;
+                            p.after(transNode);
+                            const currentMode = GM_getValue('translation_display_mode', 'bilingual');
+                            if (currentMode === 'translation_only') p.style.display = 'none';
+
+                            elementState.set(p, { ...elementState.get(p), status: 'translated' });
+                            p.dataset.translationState = 'translated';
+
+                            if (observer) observer.unobserve(p);
+                        } else {
+                            transNode.className = 'translated-by-ao3-script-error';
+                            transNode.style.cssText = 'margin-top: 0.25em; margin-bottom: 1em;';
+                            
+                            const errorParagraph = document.createElement(p.tagName.toLowerCase());
+                            errorParagraph.style.cssText = 'margin-top: 0.25em; margin-bottom: 1em;';
+                            errorParagraph.textContent = `翻译失败：${result.content.replace('翻译失败：', '')}`;
+                            
+                            transNode.appendChild(errorParagraph);
+                            p.after(transNode);
+                            elementState.delete(p);
+                        }
+                    } else {
+                        elementState.delete(p);
+                    }
+                }
+            };
+
+            let currentChunk = [];
+            for (const p of unitsToProcess) {
+                const isTextSeparator = /^\s*[-—*~<>#.=_\s]{3,}\s*$/.test(p.textContent);
+                const isHtmlSeparator = p.tagName === 'HR';
+
+                if (isTextSeparator || isHtmlSeparator) {
+                    await processChunk(currentChunk);
+                    currentChunk = [];
+
+                    elementState.set(p, { ...elementState.get(p), status: 'translated' });
+                    p.dataset.translationState = 'translated';
+
+                    if (observer) observer.unobserve(p);
+                } else if (p.textContent.trim().length > 0 || p.querySelector('img')) {
+                    currentChunk.push(p);
+                    if (currentChunk.reduce((acc, el) => acc + el.textContent.length, 0) >= chunkSize || currentChunk.length >= paragraphLimit) {
+                        await processChunk(currentChunk);
+                        currentChunk = [];
+                    }
+                } else {
+                    elementState.set(p, { ...elementState.get(p), status: 'translated' });
+                    p.dataset.translationState = 'translated';
+
+                    if (observer) observer.unobserve(p);
+                }
+            }
+            if (currentChunk.length > 0) {
+                await processChunk(currentChunk);
+            }
+            
+            isProcessing = false;
+            if (translationQueue.size > 0) {
+                setTimeout(() => processQueue(observer), 250);
+            }
+        };
+        
+        const observer = new IntersectionObserver((entries, obs) => {
+            let addedToQueue = false;
+            entries.forEach(entry => {
+                const state = elementState.get(entry.target);
+                if (entry.isIntersecting && (!state || !state.status)) {
+                    elementState.set(entry.target, { ...state, status: 'queued' });
+                    translationQueue.add(entry.target);
+                    addedToQueue = true;
+                }
+            });
+            if (addedToQueue) processQueue(obs);
+        }, { rootMargin: '0px 0px 500px 0px' });
+
+        const isInViewport = (el) => {
+            const rect = el.getBoundingClientRect();
+            return ( rect.top < window.innerHeight && rect.bottom >= 0 );
+        };
+
+        const visibleUnits = allUnits.filter(unit => isInViewport(unit) && !elementState.get(unit)?.status);
+        const offscreenUnits = allUnits.filter(unit => !isInViewport(unit) && !elementState.get(unit)?.status);
+        
+        if (visibleUnits.length > 0) {
+            visibleUnits.forEach(u => {
+                elementState.set(u, { ...elementState.get(u), status: 'queued' });
+                translationQueue.add(u);
+            });
+            processQueue(observer);
+        }
+
+        if (offscreenUnits.length > 0) {
+            offscreenUnits.forEach(unit => observer.observe(unit));
         }
     }
 
     /**
-     * 核心翻译引擎：用于正文。懒加载，只翻译进入视野的段落。
-     * @param {HTMLElement} containerElement - 容器元素
+     * 针对非标准排版进行预处理，将其转换为标准的 <p> 标签结构。
+     * @param {HTMLElement} container - 需要进行预处理的容器元素
      */
-    function runImmersiveTranslationWithObserver(containerElement) {
-        const translatableSelectors = 'p, blockquote, li, h1, h2, h3, h4, h5, h6';
-        const units = Array.from(containerElement.querySelectorAll(translatableSelectors));
+    function preProcessContentForIrregularLayouts(container) {
+        const directParagraphs = container.querySelectorAll(':scope > p');
+        const directChildren = container.children;
 
-        const observer = new IntersectionObserver(async (entries, obs) => {
-            const unitsToTranslate = entries
-                .filter(e => e.isIntersecting)
-                .map(e => e.target)
-                .filter(unit => !unit.dataset.translationState);
+        if (directParagraphs.length > 1 || directChildren.length > 5) {
+            return;
+        }
 
-            if (unitsToTranslate.length === 0) return;
-            unitsToTranslate.forEach(unit => unit.dataset.translationState = 'translating');
+        let contentHTML = container.innerHTML;
 
-            for (const unit of unitsToTranslate) {
-                const originalText = unit.textContent.trim();
-                if (!originalText) {
-                    unit.dataset.translationState = 'translated';
-                    obs.unobserve(unit);
-                    continue;
-                }
-                try {
-                    const translatedText = await requestRemoteTranslation(originalText);
-                    const transNode = document.createElement('div');
-                    transNode.className = 'translated-by-ao3-script';
-                    transNode.style.cssText = 'color: #777; margin-top: 0.25em; margin-bottom: 1em;';
-                    transNode.textContent = translatedText;
-                    unit.after(transNode);
-                    unit.dataset.translationState = 'translated';
-                    obs.unobserve(unit);
-                } catch (e) {
-                    console.error("Lazy translation failed for unit:", unit, e);
-                    delete unit.dataset.translationState;
-                }
-                await sleep(CONFIG.REQUEST_DELAY);
-            }
-        }, { rootMargin: '200px 0px 400px 0px' });
+        if (directParagraphs.length === 1) {
+            contentHTML = directParagraphs[0].innerHTML;
+        } else if (directChildren.length === 1 && (directChildren[0].tagName === 'DIV' || directChildren[0].tagName === 'SPAN')) {
+            contentHTML = directChildren[0].innerHTML;
+        }
 
-        units.forEach(unit => observer.observe(unit));
+        const separatorRegex = /(?:\s*<br\s*\/?>\s*){1,}/i;
+        const fragments = contentHTML.split(separatorRegex);
+
+        if (fragments.length <= 1) {
+            return;
+        }
+
+        console.log("AO3 汉化插件：检测到非标准文章排版，正在进行自动预处理...");
+
+        const newHTML = fragments
+            .map(fragment => fragment.trim())
+            .filter(fragment => fragment.length > 0)
+            .map(fragment => `<p>${fragment}</p>`)
+            .join('');
+
+        if (newHTML) {
+            container.innerHTML = newHTML;
+        }
     }
 
-
     /**
-     * getNestedProperty 函数：获取嵌套属性的安全函数
+     * getNestedProperty 函数：获取嵌套属性的安全函数。
      * @param {Object} obj - 需要查询的对象
      * @param {string} path - 属性路径
      * @returns {*} - 返回嵌套属性的值
@@ -6267,7 +6545,8 @@ function translateFlashMessages() {
         }, obj);
     }
 
-    let togetherApiKey = null; // 用于缓存 Together AI 的 API Key
+    // 用于缓存 Together AI 的 API Key
+    let togetherApiKey = null;
 
     /**
      * 获取并缓存 Together AI 的 API Key
@@ -6311,99 +6590,181 @@ function translateFlashMessages() {
                 });
 
                 if (newKey) {
-                    GM_setValue(CACHE_KEY, newKey); // 成功后缓存 Key
+                    GM_setValue(CACHE_KEY, newKey);
                     console.log('Successfully fetched and cached new API Key.');
                     return newKey;
                 }
             } catch (error) {
-                console.warn(error.message); // 输出错误信息，然后继续尝试下一个 URL
+                console.warn(error.message);
             }
         }
 
-        // 若所有 URL 都失败
         throw new Error('Failed to retrieve Together AI API Key from all available sources.');
     }
 
     /**
      * 远程翻译请求函数
      */
-    async function requestRemoteTranslation(text, { retryCount = 0, maxRetries = 3, isFreeTierRetry = false } = {}) {
+    async function requestRemoteTranslation(paragraphs, { retryCount = 0, maxRetries = 2 } = {}) {
         const engineName = GM_getValue('transEngine', 'together_ai');
         const engineConfig = CONFIG.TRANS_ENGINES[engineName];
+        if (!engineConfig) {
+            throw new Error(`服务 ${engineName} 未配置`);
+        }
 
-        if (!engineConfig) return Promise.resolve(`翻译失败 (引擎 ${engineName} 未配置)`);
+        let translatedText;
 
-        return new Promise(async (resolve) => {
-            const { url_api, method, getRequestData, responseIdentifier } = engineConfig;
-            let headers = { ...engineConfig.headers };
+        try {
+            if (engineName === 'google_ai') {
+                const keys = GM_getValue('google_ai_keys_array', []);
+                if (keys.length === 0) {
+                    throw new Error('请先在菜单中设置至少一个 Google AI API Key');
+                }
 
-            try {
-                if (engineName === 'chatglm_official') {
-                    const apiKey = GM_getValue('chatglm_api_key');
-                    if (!apiKey) { resolve('翻译失败！请先在菜单中设置 ChatGLM API Key。'); return; }
+                let keyIndex = GM_getValue('google_ai_key_index', 0) % keys.length;
+
+                for (let i = 0; i < keys.length; i++) {
+                    const currentKey = keys[keyIndex];
+                    let keyHasFailedPermanently = false;
+                    console.log(`正在尝试使用 Google AI Key #${keyIndex + 1}...`);
+                    
+                    const modelId = GM_getValue('google_ai_model', 'gemini-2.5-pro');
+                    const final_url = engineConfig.url_api.replace('{model}', modelId) + `?key=${currentKey}`;
+                    const requestData = engineConfig.getRequestData(paragraphs);
+
+                    try {
+                        const result = await new Promise((resolve, reject) => {
+                            GM_xmlhttpRequest({
+                                method: engineConfig.method, url: final_url, headers: engineConfig.headers,
+                                data: JSON.stringify(requestData), responseType: 'json', timeout: 45000,
+                                onload: (res) => {
+                                    let responseData = res.response;
+                                    if (typeof responseData === 'string') try { responseData = JSON.parse(responseData); } catch(e) {}
+
+                                    const candidate = getNestedProperty(responseData, 'candidates[0]');
+                                    if (res.status !== 200 || !candidate) {
+                                        console.debug("Google AI 异常响应详情：", { requestPayload: requestData, response: responseData, status: res.status });
+                                    }
+
+                                    if (res.status === 200) {
+                                        if (!candidate) {
+                                            return reject({ type: 'empty_response', message: `Key #${keyIndex + 1} 失败：API 返回了无效的内容` });
+                                        }
+                                        const finishReason = candidate.finishReason;
+                                        if (finishReason === 'SAFETY' || finishReason === 'RECITATION' || finishReason === 'PROHIBITED_CONTENT') {
+                                            return reject({ type: 'content_error', message: `因含有敏感内容，请求被 Google AI 安全策略阻止` });
+                                        }
+                                        const content = getNestedProperty(candidate, 'content.parts[0].text');
+                                        if (!content) {
+                                            return reject({ type: 'empty_response', message: `Key #${keyIndex + 1} 失败：API 返回了空内容 (FinishReason: ${finishReason})` });
+                                        }
+                                        return resolve(responseData);
+                                    }
+
+                                    const errorMessage = getNestedProperty(responseData, 'error.message') || res.statusText || '未知错误';
+                                    if (res.status === 400 && errorMessage.toLowerCase().includes('api_key_invalid')) {
+                                        return reject({ type: 'key_invalid', message: `Key #${keyIndex + 1} 无效` });
+                                    } else if (res.status === 429) {
+                                        return reject({ type: 'rate_limit', message: `Key #${keyIndex + 1} 遇到错误（代码：429）：${errorMessage}` });
+                                    } else if (res.status === 503) {
+                                        return reject({ type: 'server_overloaded', message: `Key #${keyIndex + 1} 遇到错误（代码：503）：${errorMessage}` });
+                                    }
+                                    return reject({ type: 'api_error', message: `Key #${keyIndex + 1} 遇到错误（代码：${res.status}）：${errorMessage}` });
+                                },
+                                onerror: () => reject({ type: 'network', message: `Key #${keyIndex + 1} 网络错误` }),
+                                ontimeout: () => reject({ type: 'network', message: `Key #${keyIndex + 1} 请求超时` })
+                            });
+                        });
+                        
+                        translatedText = getNestedProperty(result, engineConfig.responseIdentifier);
+                        break;
+
+                    } catch (error) {
+                        console.warn(error.message);
+                        if (error.type === 'key_invalid' || error.type === 'quota_exceeded') {
+                            keyHasFailedPermanently = true;
+                            keyIndex = (keyIndex + 1) % keys.length;
+                            GM_setValue('google_ai_key_index', keyIndex);
+                        } else if (['server_overloaded', 'rate_limit', 'network', 'timeout'].includes(error.type)) {
+                            throw error;
+                        } else {
+                            throw new Error(error.message || 'Google AI 请求失败');
+                        }
+                    }
+                    if (i === keys.length - 1 && keyHasFailedPermanently) {
+                         throw new Error('所有 Google AI API Key 均已失效或用尽额度');
+                    }
+                }
+
+            } else {
+                const { url_api, method, getRequestData, responseIdentifier } = engineConfig;
+                let headers = { ...engineConfig.headers };
+
+                if (engineName === 'chatglm_official' || engineName === 'deepseek_ai') {
+                    const apiKey = GM_getValue(`${engineName.split('_')[0]}_api_key`);
+                    if (!apiKey) throw new Error(`请先在菜单中设置 ${engineConfig.name} API Key`);
                     headers['Authorization'] = `Bearer ${apiKey}`;
                 } else if (engineName === 'together_ai') {
-                    const apiKey = await getTogetherApiKey(isFreeTierRetry);
-                    headers['Authorization'] = `Bearer ${apiKey}`;
+                    headers['Authorization'] = `Bearer ${await getTogetherApiKey()}`;
                 }
-            } catch (error) {
-                resolve(`翻译失败 (${engineConfig.name} Key 获取失败)`);
-                return;
-            }
 
-            const requestData = getRequestData(text);
-
-            GM_xmlhttpRequest({
-                method, url: url_api, headers, data: JSON.stringify(requestData),
-                responseType: 'json', timeout: 30000,
-                onload: async (res) => {
-                    try {
-                        let responseData = res.response;
-                        
-                        if (res.status !== 200 && typeof responseData === 'string') {
-                            try { responseData = JSON.parse(responseData); }
-                            catch (e) { /* 解析失败则忽略，使用原始文本 */ }
-                        }
-                        
-                        if (res.status !== 200) {
-                            if ((res.status === 429 || res.status >= 500) && retryCount < maxRetries) {
-                                const delay = Math.pow(2, retryCount) * 1000;
-                                console.warn(`API返回错误(代码:${res.status}), ${delay/1000}秒后重试...`);
-                                await sleep(delay);
-                                resolve(await requestRemoteTranslation(text, { retryCount: retryCount + 1 }));
-                                return;
-                            }
-                            if (engineName === 'chatglm_official' && res.status === 400 && getNestedProperty(responseData, 'error.code') === '1301') {
-                                resolve('此段包含敏感内容，无法翻译。');
-                                return;
-                            }
-                            if (res.status === 401) {
-                                resolve(`翻译失败！API Key无效或错误，请在菜单中重新设置。`);
-                                return;
-                            }
-                            const errorMessage = getNestedProperty(responseData, 'error.message') || res.responseText;
-                            resolve(`翻译失败 (代码: ${res.status}): ${errorMessage}`);
-                            return;
-                        }
-
-                        let translatedText = getNestedProperty(responseData, responseIdentifier);
-                        if (typeof translatedText !== 'string' || !translatedText.trim()) {
-                             if (text.trim().match(/^[\s\-_—*~<>#.=]+$/) && text.length < 20) resolve(text);
-                             else resolve('翻译失败！API未返回有效文本。');
-                             return;
-                        }
-                        
-                        resolve(translatedText);
-
-                    } catch (err) {
-                        console.error('脚本解析错误:', err);
-                        resolve('翻译失败！处理API响应时脚本出错。');
+                const requestData = engineConfig.getRequestData(paragraphs);
+                
+                const res = await new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method, url: url_api, headers, data: JSON.stringify(requestData),
+                        responseType: 'json', timeout: 45000,
+                        onload: resolve,
+                        onerror: () => reject(new Error('网络请求错误')),
+                        ontimeout: () => reject(new Error('请求超时'))
+                    });
+                });
+                
+                if (res.status !== 200) {
+                    let errorMessage = res.statusText;
+                    let responseData = res.response;
+                    if (typeof responseData === 'string') try { responseData = JSON.parse(responseData); } catch (e) {}
+                    
+                    if (engineName === 'chatglm_official' && getNestedProperty(responseData, 'error.code') === '1301') {
+                        throw new Error('因含有敏感内容，请求被 ChatGLM 安全策略阻止');
                     }
-                },
-                onerror: () => resolve('翻译失败！网络请求错误，请检查网络或代理。'),
-                ontimeout: () => resolve('翻译失败！请求超时。')
-            });
-        });
+                    
+                    if (responseData && typeof responseData === 'object' && responseData.error) {
+                        errorMessage = responseData.error.message || JSON.stringify(responseData.error);
+                    }
+
+                    console.debug(`${engineConfig.name} 异常响应详情：`, { requestPayload: requestData, response: res.response, status: res.status });
+                    if (res.status === 503 || res.status === 429 || res.status >= 500) {
+                        const error = new Error(`（代码：${res.status}）：${errorMessage}`);
+                        error.type = 'server_overloaded';
+                        throw error;
+                    }
+                    throw new Error(`（代码：${res.status}）：${errorMessage}`);
+                }
+                
+                let rawResult = getNestedProperty(res.response, responseIdentifier);
+
+                translatedText = rawResult;
+            }
+        } catch (error) {
+            const isRetriable = ['server_overloaded', 'rate_limit', 'network', 'timeout'].includes(error.type) ||
+                                error.message.includes('超时') || 
+                                error.message.includes('网络');
+
+            if (retryCount < maxRetries && isRetriable) {
+                const delay = Math.pow(2, retryCount) * 1500 + Math.random() * 1000;
+                console.warn(`请求遇到可重试错误：${error.message}。将在 ${Math.round(delay/1000)} 秒后重试（第 ${retryCount + 1} 次）...`);
+                await sleep(delay);
+                return await requestRemoteTranslation(text, { retryCount: retryCount + 1, maxRetries });
+            }
+            throw error;
+        }
+        
+        if (typeof translatedText !== 'string' || !translatedText.trim()) {
+            throw new Error('API 未返回有效文本');
+        }
+        
+        return translatedText;
     }
 
     /**
@@ -6411,11 +6772,190 @@ function translateFlashMessages() {
      */
     function setupChatGLMKey() {
         const currentKey = GM_getValue('chatglm_api_key', '');
-        const newKey = prompt('请输入您的智谱AI (ChatGLM) API Key:', currentKey);
+        const newKey = prompt('请输入您的 ChatGLM API Key:', currentKey);
         if (newKey !== null) {
             GM_setValue('chatglm_api_key', newKey.trim());
             GM_notification(newKey.trim() ? 'ChatGLM API Key 已保存！' : 'ChatGLM API Key 已清除！');
         }
+    }
+
+    /**
+     * 设置用户自己的 DeepSeek API Key
+     */
+    function setupDeepSeekKey() {
+        const currentKey = GM_getValue('deepseek_api_key', '');
+        const newKey = prompt('请输入您的 DeepSeek API Key:', currentKey);
+        if (newKey !== null) {
+            GM_setValue('deepseek_api_key', newKey.trim());
+            GM_notification(newKey.trim() ? 'DeepSeek API Key 已保存！' : 'DeepSeek API Key 已清除！');
+        }
+    }
+
+    /**
+     * 设置用户自己的 Google AI API Key
+     * 可实现轮询
+     */
+    function setupGoogleAiKeys() {
+        const storedKeys = GM_getValue('google_ai_keys_array', []);
+        const currentKeysString = storedKeys.join(',\n');
+        const newKeysString = prompt(
+            '请输入一个或多个 Google AI API Key，用英文逗号分隔。脚本将自动轮询这些 API Key 以提高额度。',
+            currentKeysString
+        );
+        if (newKeysString !== null) {
+            const newKeysArray = newKeysString.split(',')
+                .map(key => key.trim())
+                .filter(key => key.length > 0);
+            GM_setValue('google_ai_keys_array', newKeysArray);
+            if (newKeysArray.length > 0) {
+                GM_notification(`已保存 ${newKeysArray.length} 个 Google AI API Key！`);
+                GM_setValue('google_ai_key_index', 0);
+            } else {
+                GM_notification('Google AI API Key 已全部清除。');
+            }
+        }
+    }
+
+    /**
+     * 管理 AI 翻译术语表
+     */
+    function manageGlossary() {
+        const GLOSSARY_KEY = 'ao3_translation_glossary';
+        const currentGlossary = GM_getValue(GLOSSARY_KEY, {});
+        const glossaryForDisplay = Object.entries(currentGlossary)
+            .map(([key, value]) => `${key}：${value}`)
+            .join('， ');
+        const userInput = prompt(
+            '请按“原文：译文”格式编辑术语表，词条间用逗号分隔。中英文标点符号均可。例如：\nWakaba：若叶，Mutsumi：睦，Tsukinomori Girls\' Academy：月之森女子学园',
+            glossaryForDisplay
+        );
+        if (userInput === null || userInput.trim() === glossaryForDisplay.trim()) {
+            GM_notification('术语表未更改。');
+            return;
+        }
+        try {
+            const newGlossary = {};
+            if (userInput.trim() === '') {
+                GM_setValue(GLOSSARY_KEY, {});
+                GM_notification('术语表已清空。');
+                return;
+            }
+            const entries = userInput.split(/[，,]/);
+            for (const entry of entries) {
+                if (entry.trim() === '') continue;
+                const parts = entry.split(/[：:]/, 2);
+                if (parts.length === 2) {
+                    const key = parts[0].trim();
+                    const value = parts[1].trim();
+                    if (key && value) {
+                        newGlossary[key] = value;
+                    } else {
+                         console.warn(`跳过无效的术语表条目: "${entry}"`);
+                    }
+                } else {
+                    console.warn(`跳过格式不正确的术语表条目: "${entry}"`);
+                }
+            }
+            GM_setValue(GLOSSARY_KEY, newGlossary);
+            GM_notification('术语表已成功更新！');
+        } catch (e) {
+            alert('保存失败！解析时发生未知错误，请检查您的输入。\n\n错误信息: ' + e.message);
+        }
+    }
+
+    /**
+     * 在内存中对段落元素应用术语表
+     * @param {object} glossary - 术语表对象
+     */
+    function getGlossaryProcessedParagraphs(paragraphs, glossary) {
+        if (!glossary || Object.keys(glossary).length === 0) {
+            return paragraphs;
+        }
+
+        const sortedKeys = Object.keys(glossary).sort((a, b) => b.length - a.length);
+
+        return paragraphs.map(p => {
+            const clone = p.cloneNode(true);
+            const treeWalker = document.createTreeWalker(
+                clone,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+
+            let currentNode;
+            while (currentNode = treeWalker.nextNode()) {
+                let processedText = currentNode.nodeValue;
+                for (const key of sortedKeys) {
+                    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(`\\b${escapedKey}\\b`, 'g');
+                    processedText = processedText.replace(regex, glossary[key]);
+                }
+                currentNode.nodeValue = processedText;
+            }
+            
+            return clone;
+        });
+    }
+
+    /**
+     * 翻译文本清理函数
+     */
+    const AdvancedTranslationCleaner = new (class {
+        constructor() {
+            this.metaKeywords = [
+                '原文', '输出', '译文', '翻译', '说明', '遵守', '润色', '语境', '保留', '符合', '指令',
+                'Translation', 'Original text', 'Output', 'Note', 'Stage', 'Strategy', 'Polish', 'Retain', 'Glossary', 'Adherence'
+            ];
+            this.patterns = this._compilePatterns();
+        }
+
+        _compilePatterns() {
+            const keywordsRegex = this.metaKeywords.join('|');
+            const junkLineRegex = new RegExp(`^\\s*(\\d+\\.\\s*)?(${keywordsRegex})[:：\\s]`, 'i');
+
+            return {
+                lineNumbers: /^\d+\.\s*/,
+                junkLine: junkLineRegex,
+                spacing: [
+                    { find: /([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, replace: '$1$2' },
+                    { find: /([\u4e00-\u9fa5])([a-zA-Z0-9])/g, replace: '$1 $2' },
+                    { find: /([a-zA-Z0-9])([\u4e00-\u9fa5])/g, replace: '$1 $2' },
+                    { find: /([\u4e00-\u9fa5])\s+([\u3000-\u303F\uff01-\uff5e])/g, replace: '$1$2' },
+                    { find: /([\u3000-\u303F\uff01-\uff5e])\s+([\u4e00-\u9fa5])/g, replace: '$1$2' },
+                    { find: /([\u4e00-\u9fa5])\s+([,.;:!?\]}])/g, replace: '$1$2' },
+                    { find: /([\u4e00-\u9fa5])\s+(<[a-zA-Z/][^>]*>)/g, replace: '$1$2' },
+                    { find: /(<[a-zA-Z/][^>]*>)\s+([\u4e00-\u9fa5])/g, replace: '$1$2' },
+                    { find: /\s{2,}/g, replace: ' ' },
+                ]
+            };
+        }
+
+        clean(text) {
+            if (!text || typeof text !== 'string') {
+                return '';
+            }
+
+            const lines = text.split('\n');
+            const cleanedLines = lines.filter(line => !this.patterns.junkLine.test(line));
+            let cleanedText = cleanedLines.join('\n');
+
+            cleanedText = cleanedText.replace(this.patterns.lineNumbers, '');
+            for (const rule of this.patterns.spacing) {
+                cleanedText = cleanedText.replace(rule.find, rule.replace);
+            }
+            
+            return cleanedText.trim();
+        }
+    })();
+
+    /**
+     * 翻译后处理函数
+     * @param {string} text - 从 AI 返回的单段译文
+     * @returns {string} - 清理后的译文
+     */
+    function postprocessTranslationCleanup(text) {
+        return AdvancedTranslationCleaner.clean(text);
     }
 
     /**
@@ -6453,7 +6993,6 @@ function translateFlashMessages() {
         });
     }
 
-
     /**
      * transBySelector 函数：通过 CSS 选择器找到页面上的元素，并将其文本内容替换为预定义的翻译。
      */
@@ -6474,17 +7013,21 @@ function translateFlashMessages() {
         });
     }
 
-
-    let menuCommandIds = []; // 用于存储所有注册的菜单命令ID
+    let menuCommandIds = [];
 
     /**
-     * 核心菜单渲染函数
+     * 菜单渲染函数
      */
     function renderMenuCommands() {
         menuCommandIds.forEach(id => GM_unregisterMenuCommand(id));
         menuCommandIds = [];
+
+        const register = (text, callback) => {
+            menuCommandIds.push(GM_registerMenuCommand(text, callback));
+        };
+
         const isAiTranslationEnabled = GM_getValue('enable_transDesc', false);
-        menuCommandIds.push(GM_registerMenuCommand(isAiTranslationEnabled ? '禁用 AI 翻译功能' : '启用 AI 翻译功能', () => {
+        register(isAiTranslationEnabled ? '禁用 AI 翻译功能' : '启用 AI 翻译功能', () => {
             const newState = !isAiTranslationEnabled;
             GM_setValue('enable_transDesc', newState);
             FeatureSet.enable_transDesc = newState;
@@ -6492,38 +7035,98 @@ function translateFlashMessages() {
             if (newState) {
                 transDesc();
             } else {
-                document.querySelectorAll('.translate-me-ao3-wrapper, .translated-by-ao3-script').forEach(el => el.remove());
-                document.querySelectorAll('[data-translation-handled="true"]').forEach(el => delete el.dataset.translationHandled);
+                document.querySelectorAll('.translate-me-ao3-wrapper, .translated-by-ao3-script, .translated-by-ao3-script-error').forEach(el => el.remove());
+                document.querySelectorAll('[data-translation-handled="true"], [data-state="translated"]').forEach(el => {
+                    delete el.dataset.translationHandled;
+                    delete el.dataset.state;
+                });
             }
             renderMenuCommands();
-        }));
-        if (isAiTranslationEnabled) {
-            const currentEngineId = GM_getValue('transEngine', 'together_ai');
-            
-            const engineNameMap = {
-                'together_ai': 'Llama',
-                'pollinations_ai': 'Pollinations',
-                'chatglm_official': 'ChatGLM'
-            };
-            const engineOrder = ['together_ai', 'pollinations_ai', 'chatglm_official'];
-            const currentEngineName = engineNameMap[currentEngineId] || '未知';
-            
-            menuCommandIds.push(GM_registerMenuCommand(`当前翻译引擎：${currentEngineName}`, () => {}));
+        });
 
-            engineOrder.forEach(engineId => {
-                if (engineId !== currentEngineId) {
-                    menuCommandIds.push(GM_registerMenuCommand(`— 切换至：${engineNameMap[engineId]}`, () => {
-                        GM_setValue('transEngine', engineId);
-                        GM_notification(`翻译引擎已切换为: ${engineNameMap[engineId]}`);
-                        renderMenuCommands();
-                    }));
-                }
+        if (isAiTranslationEnabled) {
+
+            register('管理 AI 翻译术语表', manageGlossary);
+
+            const currentMode = GM_getValue('translation_display_mode', 'bilingual');
+            const modeText = currentMode === 'bilingual' ? '双语对照' : '仅译文';
+            register(`⇄ 翻译模式：${modeText}`, () => {
+                const newMode = currentMode === 'bilingual' ? 'translation_only' : 'bilingual';
+                GM_setValue('translation_display_mode', newMode);
+                applyDisplayModeChange(newMode);
+                GM_notification(`显示模式已切换为: ${newMode === 'bilingual' ? '双语对照' : '仅译文'}`);
+                renderMenuCommands();
             });
 
+            const currentEngineId = GM_getValue('transEngine', 'together_ai');
+            const engineNameMap = {
+                'together_ai': 'Llama',
+                'chatglm_official': 'ChatGLM', 'deepseek_ai': 'DeepSeek', 'google_ai': 'Google AI'
+            };
+            const engineMasterOrder = ['together_ai', 'chatglm_official', 'deepseek_ai', 'google_ai'];
+
+            const currentServiceIndex = engineMasterOrder.indexOf(currentEngineId);
+            const nextServiceIndex = (currentServiceIndex + 1) % engineMasterOrder.length;
+            const nextEngineId = engineMasterOrder[nextServiceIndex];
+            register(`⇄ 翻译服务：${engineNameMap[currentEngineId]}`, () => {
+                GM_setValue('transEngine', nextEngineId);
+                GM_notification(`翻译服务已切换为: ${engineNameMap[nextEngineId]}`);
+                renderMenuCommands();
+            });
+
+            if (currentEngineId === 'deepseek_ai') {
+                const modelMapping = { 'deepseek-chat': 'DeepSeek V3', 'deepseek-reasoner': 'DeepSeek R1' };
+                const modelOrder = Object.keys(modelMapping);
+                const currentModelId = GM_getValue('deepseek_model', 'deepseek-chat');
+                const currentModelIndex = modelOrder.indexOf(currentModelId);
+                const nextModelIndex = (currentModelIndex + 1) % modelOrder.length;
+                const nextModelId = modelOrder[nextModelIndex];
+                
+                register(`⇄ 使用模型：${modelMapping[currentModelId]}`, () => {
+                    GM_setValue('deepseek_model', nextModelId);
+                    GM_notification(`DeepSeek 模型已切换为: ${modelMapping[nextModelId]}`);
+                    renderMenuCommands();
+                });
+            } else if (currentEngineId === 'google_ai') {
+                const modelMapping = {
+                    'gemini-2.5-pro': 'Gemini 2.5 Pro',
+                    'gemini-2.5-flash': 'Gemini 2.5 Flash'
+                };
+                const modelOrder = Object.keys(modelMapping);
+                const currentModelId = GM_getValue('google_ai_model', 'gemini-2.5-pro');
+                const currentModelIndex = modelOrder.indexOf(currentModelId);
+                const nextModelIndex = (currentModelIndex + 1) % modelOrder.length;
+                const nextModelId = modelOrder[nextModelIndex];
+
+                register(`⇄ 使用模型：${modelMapping[currentModelId]}`, () => {
+                    GM_setValue('google_ai_model', nextModelId);
+                    GM_notification(`Google AI 模型已切换为: ${modelMapping[nextModelId]}`);
+                    renderMenuCommands();
+                });
+            }
+
             if (currentEngineId === 'chatglm_official') {
-                menuCommandIds.push(GM_registerMenuCommand('— 设置 ChatGLM API Key', setupChatGLMKey));
+                register('▶ 设置 ChatGLM API Key', setupChatGLMKey);
+            } else if (currentEngineId === 'deepseek_ai') {
+                register('▶ 设置 DeepSeek API Key', setupDeepSeekKey);
+            } else if (currentEngineId === 'google_ai') {
+                register('▶ 设置 Google AI API Key', setupGoogleAiKeys);
             }
         }
+    }
+
+    /**
+     * 动态应用翻译显示模式的函数
+     * @param {string} mode - '双语对照' 或 '仅译文'
+     */
+    function applyDisplayModeChange(mode) {
+        const translatedBlocks = document.querySelectorAll('.translated-by-ao3-script');
+        translatedBlocks.forEach(translatedNode => {
+            const originalNode = translatedNode.previousElementSibling;
+            if (originalNode && originalNode.dataset.translationState === 'translated') {
+                originalNode.style.display = (mode === 'translation_only') ? 'none' : '';
+            }
+        });
     }
 
     /**
@@ -6561,7 +7164,6 @@ function translateFlashMessages() {
             }
         });
     }
-
 
     /**
      * 通用函数：重新格式化包含标准日期组件的元素。
@@ -6623,7 +7225,6 @@ function translateFlashMessages() {
         containerElement.setAttribute('data-reformatted', 'true');
     }
 
-
     /**
      * main 函数，初始化翻译功能。确保在正确时机调用 transDesc
      */
@@ -6658,10 +7259,8 @@ function translateFlashMessages() {
         watchUpdate();
     }
 
-
     /**
-     * watchUpdate 函数：
-     * 监视页面变化，根据变化的节点进行翻译。
+     * watchUpdate 函数：监视页面变化，根据变化的节点进行翻译。
      */
     function watchUpdate() {
         let previousURL = window.location.href;
@@ -6717,7 +7316,6 @@ function translateFlashMessages() {
         observer.observe(document.documentElement, { ...CONFIG.OBSERVER_CONFIG, subtree: true });
     }
 
-
     /**
      * 辅助函数：集中调用所有高优先级专用函数
      * @param {HTMLElement} [rootElement=document] - 扫描范围
@@ -6743,7 +7341,7 @@ function translateFlashMessages() {
             });
         }
 
-        // 1. 通用的后处理器和格式化函数
+        // 通用的后处理器和格式化函数
         handleTrailingPunctuation(rootElement);
         translateFirstLoginBanner();
         translateSymbolsKeyModal(rootElement);
@@ -6809,16 +7407,16 @@ function translateFlashMessages() {
         translateTOSPrompt();
         // 统一寻找并重新格式化所有日期容器
         const dateSelectors = [
-            '.header.module .meta span.published', // 适用于新闻/公告的日期容器
-            'li.collection .summary p:has(abbr.day)', // 适用于所有合集/挑战列表项中的截止日期段落
-            '.comment .posted.datetime', // 适用于评论的发布日期
-            '.comment .edited.datetime', // 适用于评论的编辑日期
-            'dd.datetime', // 处理所有<dd>中的日期，如挑战信息
-            'p:has(> span.datetime)', // 用于匹配“最后生成于”这样的段落
+            '.header.module .meta span.published',
+            'li.collection .summary p:has(abbr.day)',
+            '.comment .posted.datetime',
+            '.comment .edited.datetime',
+            'dd.datetime',
+            'p:has(> span.datetime)',
         ];
         rootElement.querySelectorAll(dateSelectors.join(', '))
-            .forEach(reformatDateInElement); // 统一调用通用日期格式化函数
-        // 2. 根据当前页面类型，调用页面专属的翻译和处理函数
+            .forEach(reformatDateInElement);
+        // 根据当前页面类型，调用页面专属的翻译和处理函数
         const pageType = pageConfig.currentPageType;
 
         if (pageType === 'about_page') {
