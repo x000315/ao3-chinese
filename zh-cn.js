@@ -1,7 +1,7 @@
 /**
  name         AO3 汉化插件 - 词库
  namespace    https://github.com/V-Lipset/ao3-chinese
- version      1.1.0-2025-07-08
+ version      1.2.0-2025-07-08
  description  AO3 汉化插件的词库文件
  author       V-Lipset
  license      GPL-3.0
@@ -178,7 +178,7 @@ const I18N = {
                 'My Preferences': '偏好设置',
                 'Dashboard': '仪表盘',
                 'Preferences': '偏好设置',
-                'Skins': '我的界面',
+                'Skins': '界面',
                 'Works in Collections': '合集中的作品',
                 'Drafts': '草稿',
                 'Please note:': '注意：',
@@ -248,6 +248,7 @@ const I18N = {
                 'Subscribe': '订阅',
                 'Invitations': '邀请好友',
                 'My pseuds:': '笔名：',
+                'Pseuds': '笔名',
                 'I joined on:': '加入于：',
                 'My user ID is:': '用户ID：',
                 'Edit My Works': '编辑作品',
@@ -506,8 +507,11 @@ const I18N = {
 
                 // 系列
                 'Creators:': '创建者:',
+                'Creator:': '创建者:',
                 'Series Begun:': '系列开始于:',
                 'Series Updated:': '系列更新于:',
+                'Description:': '描述:',
+                'Notes:': '注释:',
                 'Stats:': '统计:',
                 'Works:': '作品:',
                 'Complete:': '完结:',
@@ -627,6 +631,13 @@ const I18N = {
                     /<img alt="\(Restricted\)" title="Restricted" src="\/images\/lockblue\.png"[^>]*>/g,
                     '<img alt="(访问受限)" title="访问受限" src="/images/lockblue.png" width="15" height="15">'
                 ],
+                ['li.pseud ul a[href$="/pseuds"], li.pseud ul span.current', /^\s*All Pseuds\s*\((\d+)\)\s*$/s, '所有笔名 ($1)'],
+
+                // 作品
+                ['div.series > h3.heading', /^\s*Series this work belongs to:\s*$/s, '本作品所属系列：'],
+                ['div.series span.position', /^\s*Part (\d+) of (<a href="\/series\/.*?">.*?<\/a>)\s*$/s, '$2 第 $1 部分'],
+                ['span#kudos_more_connector', /^,\s*and\s*$/, '，和'],
+                ['a#kudos_more_link', /^([\d,]+)\s+more\s+user(s)?$/, ' $1 位用户'],
 
                 // 书签
                 ['h4.heading', /(\s*<span class="byline">.*?<\/span>\s*)save a bookmark!/s, '$1保存书签！'],
@@ -877,9 +888,9 @@ const I18N = {
             'F/M': '女/男',
             'Gen': '无CP',
             'M/M': '男/男',
-            'Multi-Fandom': '多性向-同人圈',
+            'Multi-Fandom': '多配对-同人圈',
             'Original Work': '原创作品',
-            'Multi': '多性向',
+            'Multi': '多配对',
             'Choose Not To Use Archive Warnings': '不使用 Archive 预警',
             'Creator Chose Not To Use Archive Warnings': '作者选择不使用 Archive 预警',
             'No Archive Warnings Apply': ' Archive 预警不适用',
@@ -2195,7 +2206,7 @@ const I18N = {
     }
 };
 
-/****************** 所有特殊翻译函数 ******************/
+/****************** 特殊翻译函数 ******************/
 
 /**
  * 专用翻译函数：翻译首次登录的帮助横幅
@@ -2223,7 +2234,6 @@ function translateFirstLoginBanner() {
     banner.innerHTML = translatedHTML;
     banner.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专用翻译函数：翻译未登录时首页的介绍模块
@@ -2288,7 +2298,6 @@ function translateFrontPageIntro() {
     }
     introDiv.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专用翻译函数：翻译邀请请求页面
@@ -2461,7 +2470,6 @@ function translateInvitationRequestsPage() {
     }
 }
 
-
 /**
  * 专用翻译函数：翻译“请求过于频繁”的错误页面
  */
@@ -2509,7 +2517,6 @@ function translateTooManyRequestsPage() {
     }
     body.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专门用于翻译 /works/search 页面上的“作品搜索”帮助文本。
@@ -2559,7 +2566,6 @@ function translateWorkSearchTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /works/search 页面上“日期”相关的帮助文本框。
  */
@@ -2602,7 +2608,6 @@ function translateWorkSearchDateTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /works/search 页面上“跨圈作品”相关的帮助文本框。
  */
@@ -2631,7 +2636,6 @@ function translateWorkSearchCrossoverTips() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /works/search 页面上“数值”相关的帮助文本框。
@@ -2667,7 +2671,6 @@ function translateWorkSearchNumericalTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /works/search 页面上“语言”相关的帮助文本框。
  */
@@ -2691,7 +2694,6 @@ function translateWorkSearchLanguageTips() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /works/search 页面上“标签”相关的帮助文本框。
@@ -2727,7 +2729,6 @@ function translateWorkSearchTagsTips() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /people/search 页面上“用户搜索”相关的帮助文本框。
@@ -2768,7 +2769,6 @@ function translatePeopleSearchTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /bookmarks/search 页面上“文本”相关的帮助文本框。
  */
@@ -2806,7 +2806,6 @@ function translateBookmarkSearchTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /bookmarks/search 页面上“作品标签”相关的帮助文本框。
  */
@@ -2833,7 +2832,6 @@ function translateBookmarkSearchWorkTagsTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /bookmarks/search 页面上“类型”相关的帮助文本框。
  */
@@ -2859,7 +2857,6 @@ function translateBookmarkSearchTypeTips() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /bookmarks/search 页面上“更新日期”相关的帮助文本框。
@@ -2896,7 +2893,6 @@ function translateBookmarkSearchDateUpdatedTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /bookmarks/search 页面上“书签创建者的标签”相关的帮助文本框。
  */
@@ -2922,7 +2918,6 @@ function translateBookmarkSearchBookmarkerTagsTips() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /bookmarks/search 页面上“推荐”相关的帮助文本框。
@@ -2950,7 +2945,6 @@ function translateBookmarkSearchRecTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /bookmarks/search 页面上“含注释”相关的帮助文本框。
  */
@@ -2976,7 +2970,6 @@ function translateBookmarkSearchNotesTips() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /bookmarks/search 页面上“添加日期”相关的帮助文本框。
@@ -3013,7 +3006,6 @@ function translateBookmarkSearchDateBookmarkedTips() {
     }
 }
 
-
 /**
  * 专门用于翻译 /tags/search 页面上“文本搜索”相关的帮助文本框。
  */
@@ -3049,7 +3041,6 @@ function translateTagSearchTips() {
     }
 }
 
-
 /**
  * 专用翻译函数：翻译“图标说明”弹窗
  */
@@ -3084,7 +3075,7 @@ function translateSymbolsKeyModal() {
             relDefs[1].textContent = '女/男：女性/男性配对';
             relDefs[2].innerHTML = '无CP：无恋爱关系或性关系, 或者恋爱关系并非作品重点';
             relDefs[3].textContent = '男/男：男性/男性配对';
-            relDefs[4].innerHTML = '多性向：含有一种以上的配对，或者含有数个伴侣的配对';
+            relDefs[4].innerHTML = '多配对：含有一种以上的配对，或者含有数个伴侣的配对';
             relDefs[5].textContent = '其她关系';
             relDefs[6].textContent = '该作品未被归入任何分类';
         }
@@ -3111,7 +3102,6 @@ function translateSymbolsKeyModal() {
     }
     modal.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专用翻译函数：翻译“HTML帮助”弹窗
@@ -3184,7 +3174,6 @@ function translateHtmlHelpModal() {
     }
 }
 
-
 /**
  * 专用翻译函数：翻译“书签搜索结果”帮助弹窗
  */
@@ -3217,7 +3206,6 @@ function translateBookmarkSearchResultsHelpModal() {
     modal.setAttribute('data-translated-by-custom-function', 'true');
 }
 
-
 /**
  * 专用翻译函数：翻译“关于标签集”弹窗
  */
@@ -3244,7 +3232,6 @@ function translateTagsetAboutModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门翻译“标签提名”页面的提名规则说明。
@@ -3318,7 +3305,6 @@ function translateNominationRule(originalText) {
     return finalTranslation.trim() || originalText;
 }
 
-
 /**
  * 专用翻译函数：翻译“预警”相关的帮助文本框
  */
@@ -3358,7 +3344,6 @@ function translateWarningHelpModal() {
     }
 }
 
-
 /**
  * 专用翻译函数：翻译“同人圈”相关的帮助文本框
  */
@@ -3383,7 +3368,6 @@ function translateFandomHelpModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专用翻译函数：翻译“书签图标”说明弹窗
@@ -3420,7 +3404,6 @@ function translateBookmarkSymbolsKeyModal() {
     }
     modal.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专用翻译函数：翻译“分级”相关的帮助文本框
@@ -3468,7 +3451,6 @@ function translateRatingHelpModal() {
     }
 }
 
-
 /**
  * 专门用于翻译分类标签帮助弹窗。
  */
@@ -3493,7 +3475,7 @@ function translateCategoriesHelp() {
                 <dd>无恋爱关系或性关系, 或者恋爱关系并非作品重点</dd>
                 <dt>男/男</dt>
                 <dd>男性/男性配对</dd>
-                <dt>多性向</dt>
+                <dt>多配对</dt>
                 <dd>含有一种以上的配对，或者含有数个伴侣的配对</dd>
                 <dt>其她</dt>
                 <dd>其她关系</dd>
@@ -3507,7 +3489,6 @@ function translateCategoriesHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译关系标签帮助弹窗。
@@ -3534,7 +3515,6 @@ function translateRelationshipsHelp() {
     }
 }
 
-
 /**
  * 专门用于翻译角色标签帮助弹窗。
  */
@@ -3560,7 +3540,6 @@ function translateCharactersHelp() {
     }
 }
 
-
 /**
  * 专门用于翻译"Additional Tags"帮助弹窗的文本。
  */
@@ -3585,7 +3564,6 @@ function translateAdditionalTagsHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译"Adding To Collections"帮助弹窗的文本。
@@ -3622,7 +3600,6 @@ function translateCollectionsHelp() {
     }
 }
 
-
 /**
  * 专门用于翻译"Recipients"帮助弹窗的文本。
  */
@@ -3652,7 +3629,6 @@ function translateRecipientsHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译"Parent Works Help"帮助弹窗的文本。
@@ -3684,7 +3660,6 @@ function translateParentWorksHelp() {
     }
 }
 
-
 /**
  * 专门用于翻译"Choosing Series"帮助弹窗的文本。
  */
@@ -3715,7 +3690,6 @@ function translateChoosingSeriesHelp() {
     }
 }
 
-
 /**
  * 专门用于翻译"Publication Date Options"帮助弹窗的文本。
  */
@@ -3745,7 +3719,6 @@ function translateBackdatingHelp() {
     }
 }
 
-
 /**
  * 专门用于翻译"Languages"帮助弹窗的文本。
  */
@@ -3769,7 +3742,6 @@ function translateLanguagesHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 Work Skins 弹窗页面的帮助文本。
@@ -3817,7 +3789,6 @@ function translateWorkSkins() {
     }
 }
 
-
 /**
  * 专门用于翻译 Registered Users 弹窗页面的帮助文本。
  */
@@ -3845,7 +3816,6 @@ function translateRegisteredUsers() {
     }
 }
 
-
 /**
  * 专门用于翻译 Comments Moderated 弹窗页面的帮助文本。
  */
@@ -3870,7 +3840,6 @@ function translateCommentsModerated() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 Who can comment on this work 弹窗页面的帮助文本。
@@ -3903,7 +3872,6 @@ function translateWhoCanComment() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译导入疑难解答弹窗的帮助文本。
@@ -3946,7 +3914,6 @@ function translateWorkImportTroubleshooting() {
     }
 }
 
-
 /**
  * 专门用于翻译编码帮助弹窗的帮助文本。
  */
@@ -3971,7 +3938,6 @@ function translateEncodingHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /users/edit 页面上“隐私偏好”弹窗的帮助文本。
@@ -4032,7 +3998,6 @@ function translatePrivacyPreferences() {
     }
 }
 
-
 /**
  * 专门用于翻译“显示偏好”弹窗的内容。
  */
@@ -4078,7 +4043,6 @@ function translateDisplayPreferences() {
     }
 }
 
-
 /**
  * 专门用于翻译“界面基础”弹窗的内容。
  */
@@ -4106,7 +4070,6 @@ function translateSkinsBasics() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译“作品标题格式”帮助弹窗。
@@ -4175,7 +4138,6 @@ function translateCommentPreferences() {
     }
 }
 
-
 /**
  * 专门用于翻译“合集、挑战与赠文偏好”帮助弹窗。
  */
@@ -4219,7 +4181,6 @@ function translateCollectionPreferences() {
     }
 }
 
-
 /**
  * 专门用于翻译“其她偏好”帮助弹窗。
  */
@@ -4251,7 +4212,6 @@ function translateMiscPreferences() {
     }
 }
 
-
 /**
  * 专门用于翻译筛选侧边栏中的“包含标签”帮助文本。
  */
@@ -4282,7 +4242,6 @@ function translateTagFiltersIncludeTags() {
     }
 }
 
-
 /**
  * 专门用于翻译筛选侧边栏中的“排除标签”帮助文本。
  */
@@ -4311,7 +4270,6 @@ function translateTagFiltersExcludeTags() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /bookmarks/search 页面上“包含标签”筛选帮助的文本。
@@ -4357,7 +4315,6 @@ function translateBookmarkFiltersIncludeTags() {
     }
 }
 
-
 /**
  * 专门用于翻译 /bookmarks/search 页面上“排除标签”筛选帮助的文本。
  */
@@ -4399,7 +4356,6 @@ function translateBookmarkFiltersExcludeTags() {
     }
 }
 
-
 /**
  * 专门用于翻译 /works/search 页面上“结果”相关的帮助文本。
  */
@@ -4423,7 +4379,6 @@ function translateWorkSearchResultsHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译“Skins approval”弹窗的提示信息。
@@ -4454,7 +4409,6 @@ function translateSkinsApprovalModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译“Skins creating”弹窗中的 CSS 帮助文本。
@@ -4568,7 +4522,6 @@ background: -webkit-linear-gradient(top, #1e5799 0%,#2989d8 50%,#207cca 51%,#7db
     }
 }
 
-
 /**
  * 专门用于翻译“Skin Conditions”弹窗的帮助文本。
  */
@@ -4642,7 +4595,6 @@ function translateSkinsConditionsModal() {
     }
 }
 
-
 /**
  * 专门用于翻译“Skins parents”弹窗的帮助文本。
  */
@@ -4670,7 +4622,6 @@ function translateSkinsParentsModal() {
     }
 }
 
-
 /**
  * 专门用于翻译“Skins wizard font”弹窗的帮助文本。
  */
@@ -4696,7 +4647,6 @@ function translateSkinsWizardFontModal() {
     }
 }
 
-
 /**
  * 专门用于翻译“Skins wizard font size”弹窗的帮助文本。
  */
@@ -4720,7 +4670,6 @@ function translateSkinsWizardFontSizeModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译“Skins wizard vertical gap”弹窗的帮助文本。
@@ -4747,7 +4696,6 @@ function translateSkinsWizardVerticalGapModal() {
     }
 }
 
-
 /**
  * 专门用于翻译“Skins wizard accent color”弹窗的帮助文本。
  */
@@ -4771,7 +4719,6 @@ function translateSkinsWizardAccentColorModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专用于翻译“合集名称”帮助弹窗
@@ -4797,7 +4744,6 @@ function translateCollectionNameHelpModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 "Icon Alt Text" 弹窗。
@@ -4828,7 +4774,6 @@ function translateIconAltTextHelpModal() {
     }
 }
 
-
 /**
  * 专用于翻译“笔名图标注释”帮助弹窗
  */
@@ -4851,7 +4796,6 @@ function translatePseudIconCommentHelpModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专用于翻译“审核制合集”帮助弹窗
@@ -4879,7 +4823,6 @@ function translateCollectionModeratedHelpModal() {
     }
 }
 
-
 /**
  * 专用于翻译“关闭的合集”帮助弹窗
  */
@@ -4903,7 +4846,6 @@ function translateCollectionClosedHelpModal() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译 /tags/search 页面上“标签搜索结果”帮助文本。
@@ -4930,7 +4872,6 @@ function translateTagSearchResultsHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专门用于翻译挑战注册页面上“选择任意”的帮助弹窗。
@@ -4970,7 +4911,6 @@ function translateChallengeAnyTips() {
     }
 }
 
-
 /**
  * 专门用于翻译挑战注册页面上“可选标签”的帮助弹窗。
  */
@@ -4997,7 +4937,6 @@ function translateOptionalTagsHelp() {
         closeButton.textContent = '关闭';
     }
 }
-
 
 /**
  * 专用翻译函数：翻译“关于 OTW”页面
@@ -5028,7 +4967,6 @@ function translateAboutPage() {
     mainDiv.setAttribute('data-translated-by-custom-function', 'true');
 }
 
-
 /**
  * 专用翻译函数：翻译“捐赠”页面
  */
@@ -5058,7 +4996,6 @@ function translateDonatePage() {
     `;
     mainDiv.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专用翻译函数：翻译“多元化声明”页面
@@ -5095,7 +5032,6 @@ function translateDiversityStatement() {
     `;
     mainDiv.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专门用于翻译服务条款（TOS）同意提示弹窗。
@@ -5136,7 +5072,6 @@ function translateTOSPrompt() {
     }
     promptDiv.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 各种value按钮
@@ -5191,7 +5126,6 @@ function translateActionButtons() {
     });
 }
 
-
 /**
  * 专用于翻译排序按钮（↑ Date, ↓ Fandom）
  */
@@ -5222,7 +5156,6 @@ function translateSortButtons() {
     });
 }
 
-
 /**
  * 专用于翻译 /tag_sets 页面上带有“?”弹窗链接的标题。
  */
@@ -5239,7 +5172,6 @@ function translateTagSetsHeading() {
     }
     h2.setAttribute('data-translated-by-custom-function', 'true');
 }
-
 
 /**
  * 专用于翻译搜索结果页面上带有“?”弹窗链接的“找到”标题。
@@ -5261,7 +5193,6 @@ function translateFoundResultsHeading() {
         h3.setAttribute('data-translated-by-custom-function', 'true');
     });
 }
-
 
 /**
  * 专门用于翻译作品与书签搜索结果页面上的 H4 标题。
@@ -5314,7 +5245,7 @@ function translateSearchResultsHeader() {
         'f/m': '女/男',
         'm/m': '男/男',
         'gen': '无CP',
-        'multi': '多性向',
+        'multi': '多配对',
         'other': '其她',
         'work': '作品',
         'series': '系列',
@@ -5372,7 +5303,6 @@ function translateSearchResultsHeader() {
         noResultsP.textContent = '未找到结果。您可以尝试修改搜索设置，使其不那么精确。';
     }
 }
-
 
 /**
  * 翻译 flash notice 提示消息
