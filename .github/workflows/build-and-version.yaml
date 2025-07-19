@@ -44,40 +44,44 @@ jobs:
 
           # --- 生成 local.user.js ---
           echo "Generating local.user.js..."
-
           # 1. 生成头部
           FINAL_HEADER=$(sed -n '1,/==\/UserScript==/p' main.user.js | \
             sed -E \
               -e 's#^(\/\/ @downloadURL\s+https://.*/)main\.user\.js$#\1local.user.js#' \
               -e 's#^(\/\/ @updateURL\s+https://.*/)main\.user\.js$#\1local.user.js#' \
               -e '/@require.*zh-cn\.js/d')
-          
           # 2. 提取脚本主体
           MAIN_BODY=$(sed '1,/==\/UserScript==/d' main.user.js)
           THESAURUS_BODY=$(sed '1,/^\s*\*\//d' zh-cn.js)
-
           # 3. 文件拼接
           MARKER_TEXT="let pageConfig = {};"
           ESCAPED_MARKER=$(echo "$MARKER_TEXT" | sed 's/[{}]/\\&/g')
-          
           MAIN_PART1=$(awk "/$ESCAPED_MARKER/ {exit} {print}" <<< "$MAIN_BODY")
           MAIN_PART2=$(awk "BEGIN{p=0} /$ESCAPED_MARKER/ {p=1} p" <<< "$MAIN_BODY")
-
           # 4. 组合成 local.user.js 文件
           echo "$FINAL_HEADER" > local.user.js
           echo "$MAIN_PART1" >> local.user.js
           echo "$THESAURUS_BODY" >> local.user.js
           echo "" >> local.user.js
           echo "$MAIN_PART2" >> local.user.js
-          
           echo "local.user.js generated successfully."
 
           # --- 提交变动 ---
           if ! git diff --quiet; then
             echo "Changes detected. Committing and pushing..."
             git add main.user.js zh-cn.js local.user.js
-            commit_message="build: auto-update script version and build local.user.js [ci skip]"
-            git commit -m "$commit_message"
+            
+            # 从上一个提交中获取用户消息
+            USER_COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+
+            # 从 main.user.js 中提取新的版本号
+            NEW_VERSION=$(grep "@version" main.user.js | awk '{print $3}')
+            
+            # 创建新的提交消息
+            COMMIT_MESSAGE="${USER_COMMIT_MESSAGE}"$'\n\n'"build: Bump version to ${NEW_VERSION} & build local.user.js [ci skip]"
+            
+            echo "Generated commit message: $COMMIT_MESSAGE"
+            git commit -m "$COMMIT_MESSAGE"
             git push
             echo "Changes pushed to repository."
           else
