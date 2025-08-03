@@ -1,0 +1,163 @@
+作者：V-Lipset
+版本：1.0.0
+更新时间：2025-08-03
+
+词条
+// Poppin'Party
+Toyama：户山
+Kasumi：香澄
+Hanazono：花园
+Tae：多惠
+Ushigome：牛込
+Rimi：里美
+Yamabuki：山吹
+Saaya：沙绫
+Ichigaya：市谷
+Arisa：有咲
+
+// Roselia
+Minato：凑
+Yukina：友希那
+Hikawa：冰川
+Sayo：纱夜
+Imai：今井
+Lisa：莉莎
+Udagawa：宇田川
+Ako：亚子
+Shirokane：白金
+Rinko：燐子
+
+// Afterglow
+Mitake：美竹
+Ran：兰
+Aoba：青叶
+Moca：摩卡
+Uehara：上原
+Himari：绯玛丽
+Udagawa：宇田川
+Tomoe：巴
+Hazawa：羽泽
+Tsugumi：鸫
+
+// Pastel Palettes
+Maruyama：丸山
+Aya：彩
+Hikawa：冰川
+Hina：日菜
+Shirasagi：白鹭
+Chisato：千圣
+Yamato：大和
+Maya：麻弥
+Wakamiya：若宫
+Eve：伊芙
+
+// Hello, Happy World!
+Tsurumaki：弦卷
+Kokoro：心
+Seta：濑田
+Kaoru：薰
+Kitazawa：北泽
+Hagumi：育美
+Matsubara：松原
+Kanon：花音
+Okusawa：奥泽
+Misaki：美咲
+Michelle：米歇尔
+
+// Raise A Suilen
+Wakana：和奏
+Rei：瑞依
+Asahi：朝日
+Rokka：六花
+Satou：佐藤
+Masuki：增姬
+Nyūbara：鳰原
+Reona：玲於奈
+Tamade：珠手
+Chiyu：知优
+
+// Morfonica
+Kurata：仓田
+Mashiro：真白
+Kirigaya：桐谷
+Touko：透子
+Hiromachi：广町
+Nanami：七深
+Futaba：二叶
+Tsukushi：筑紫
+Yashio：八潮
+Rui：瑠唯
+
+// MyGO!!!!!
+Takamatsu：高松
+Tomori：灯
+Chihaya：千早
+Anon：爱音
+Kaname：要
+Raana：乐奈
+Nagasaki：长崎
+Soyo：素世
+Shiina：椎名
+Taki：立希
+Rikki：立希
+
+// Ave Mujica
+Misumi：三角
+Uika：初华
+Hatsune：初音
+Wakaba：若叶
+Mutsumi：睦
+Yahata：八幡
+Umiri：海铃
+Yuutenji：祐天寺
+Nyamu：若麦
+Togawa：丰川
+Sakiko：祥子
+Saki：祥子
+
+// Mugendai Mewtype
+Nakamachi：仲町
+Arale：阿拉蕾
+Miyanaga：宫永
+Nonoka：野乃花
+Minetsuki：峰月
+Ritsu：律
+Fuji：藤
+Miyako：都子
+Sengoku：千石
+Yuno：由乃
+
+// CHiSPA
+Umino：海野
+Natsuki：夏希
+Taiko：大湖
+Satomi：里实
+Mori：森
+Fumika：文华
+Kawabata：川端
+Mayu：真结
+
+// Glitter Green
+Ushigome：牛込
+Yuri：百合
+Nijikki：二十骑
+Hinako：雏子
+Uzawa：鹈泽
+Rii：莉
+Wanibe：鳄部
+Nanana：七菜
+
+// Sumimi
+Sumita：纯田
+Mana：真奈
+
+Tsuzuki：都筑
+Shifune：诗船
+Toyama：户山
+Asuka：明日香
+Tsukishima：月岛
+Marina：麻里奈
+
+Tsukinomori Girls' Academy：月之森女子学园
+Hanasakigawa Girls' High School：羽丘女子学园
+Haneoka Girls' High School：花咲川女子学园
