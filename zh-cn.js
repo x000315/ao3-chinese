@@ -1,7 +1,7 @@
 /**
  name         AO3 汉化插件 - 词库
  namespace    https://github.com/V-Lipset/ao3-chinese
- version      1.2.0-2025-07-19
+ version      1.3.0-2025-08-03
  description  AO3 汉化插件的词库文件
  author       V-Lipset
  license      GPL-3.0
@@ -22,7 +22,7 @@ const I18N = {
             'works_show': ['.stats .hits', '.stats .kudos'],
         },
         ignoreSelectorPage: {
-            '*': ['script', 'style', 'noscript', 'iframe', 'canvas', 'video', 'audio', 'img', 'svg', 'pre', 'code', '.userstuff.workskin', '.workskin', '[data-translated-by-custom-function]'],
+            '*': ['script', 'style', 'noscript', 'iframe', 'canvas', 'video', 'audio', 'img', 'svg', 'pre', 'code', '.userstuff.workskin', '.workskin', 'div.autocomplete.dropdown ul', '[data-translated-by-custom-function]'],
             'works_show': ['.dropdown.actions-menu ul', '.userstuff'],
             'admin_posts_show': ['.userstuff'],
             'tag_sets_index': ['h2.heading', 'dl.stats'],
@@ -37,6 +37,7 @@ const I18N = {
             'abuse_reports_new': ['.userstuff'],
             'support_page': ['.userstuff'],
             'known_issues_page': ['.admin.userstuff'],
+            'report_and_support_page': ['.userstuff'],
         },
         characterDataPage: ['common', 'works_show', 'users_dashboard'],
         rePagePath: /^\/([a-zA-Z0-9_-]+)(?:\/([a-zA-Z0-9_-]+))?/
@@ -212,6 +213,8 @@ const I18N = {
                 'History': '历史记录',
                 'Full History': '全部历史记录',
                 'Marked for Later': '稍后阅读',
+                'Is it later already?': '到“稍后”了吗？',
+                'Some works you\'ve marked for later.': '这里是您标记为稍后阅读的作品。',
                 'Clear History': '清空历史记录',
                 'Delete from History': '从历史记录中删除',
                 'Subscriptions': '订阅列表',
@@ -400,6 +403,7 @@ const I18N = {
                 'Delete': '删除',
                 'Cancel': '取消',
                 'Save': '保存',
+                'Saved': '已保存',
                 'Submit': '提交',
                 'Filters': '筛选器',
                 'Sort By': '排序方式',
@@ -430,7 +434,7 @@ const I18N = {
                 'Please enter your email address.': '请输入您的电子邮箱地址',
                 'Hide Creator\'s Style': '隐藏创作者样式',
                 'Show Creator\'s Style': '显示创作者样式',
-                'top level comment': '置顶评论',
+                'top level comment': '主评论',
                 'Share Work': '分享作品',
 
                 // 合集
@@ -460,6 +464,7 @@ const I18N = {
 
                 // 书签
                 'Bookmark Search': '书签搜索', 
+                'Edit Bookmark': '编辑书签',
                 'Start typing for suggestions!': '开始输入以获取建议',
                 'Searching...': '搜索中…',
                 '(No suggestions found)': '未找到建议',
@@ -597,7 +602,8 @@ const I18N = {
                     '章节索引：$1 by $2'
                 ],
                 ['p', /^\s*<strong>([\d,]+)\s+Found<\/strong>\s*$/, '找到 $1 条结果'],
-                ['h2.heading', /^\s*(\d+)\s*-\s*(\d+)\s+of\s+([0-9,]+)\s+Works?\s+in\s+(<a[^>]+>.+?<\/a>)\s*$/s, '$4 的 $3 篇作品中的第 $1 - $2 篇'],
+                ['h2.heading', /^\s*(\d+)\s*-\s*(\d+)\s+of\s+([0-9,]+)\s+Works?\s+in\s+(<a[^>]+>.+?<\/a>)\s*$/s, '$4：$3 篇作品，第 $1 - $2 篇'],
+                ['h2.heading', /^\s*([\d,]+)\s+Works?\s+in\s+(<a[^>]+>.+?<\/a>)\s*$/s, '$2：$1 篇作品'],
                 ['dd.expandable dl.range dt label', /^From$/s, '从'],
                 ['dd.expandable dl.range dt label', /^To$/s, '到'],
                 ['label[for^="include_work_search_category_ids_"] span:last-of-type', /^(Other)(\s*\(\d+\))$/s, '其她$2'],
@@ -632,12 +638,6 @@ const I18N = {
                     '<img alt="(访问受限)" title="访问受限" src="/images/lockblue.png" width="15" height="15">'
                 ],
                 ['li.pseud ul a[href$="/pseuds"], li.pseud ul span.current', /^\s*All Pseuds\s*\((\d+)\)\s*$/s, '所有笔名 ($1)'],
-
-                // 作品
-                ['div.series > h3.heading', /^\s*Series this work belongs to:\s*$/s, '本作品所属系列：'],
-                ['div.series span.position', /^\s*Part (\d+) of (<a href="\/series\/.*?">.*?<\/a>)\s*$/s, '$2 第 $1 部分'],
-                ['span#kudos_more_connector', /^,\s*and\s*$/, '，和'],
-                ['a#kudos_more_link', /^([\d,]+)\s+more\s+user(s)?$/, ' $1 位用户'],
 
                 // 书签
                 ['h4.heading', /(\s*<span class="byline">.*?<\/span>\s*)save a bookmark!/s, '$1保存书签！'],
@@ -739,19 +739,20 @@ const I18N = {
                     /^\s*<span>Last visited:<\/span>\s*(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})\s+\((.*?)\)\s+Visited\s+(once|(\d+)\s+times)(?:\s+\((Marked for Later\.)\))?\s*$/s,
                     (match, day, monthAbbr, year, statusText, visitText, visitCount, markedForLaterText) => {
                         const statusMap = {
-                            'Latest version.': '最新版本',
-                            'Minor edits made since then.': '此后有细微修改',
-                            'Update available.': '有可用更新'
+                            'Latest version.': '已是最新版',
+                            'Minor edits made since then.': '有微小修订',
+                            'Update available.': '作品有更新'
                         };
                         const translatedDate = `${year}年${monthMap[monthAbbr]}月${day}日`;
                         const translatedStatus = statusMap[statusText.trim()] || statusText.trim();
-                        const translatedVisit = visitText === 'once' ? '访问 1 次' : `访问 ${visitCount} 次`;
-                        const translatedMarked = markedForLaterText ? '（已标记稍后阅读）' : '';
+                        const translatedVisit = visitText === 'once' ? '阅读 1 次' : `共阅读 ${visitCount} 次`;
+                        const translatedMarked = markedForLaterText ? '（已标记为稍后阅读）' : '';
 
-                        let result = `最近访问：${translatedDate}（${translatedStatus}）。${translatedVisit}`;
+                        let result = `上次阅读：${translatedDate}（${translatedStatus}）。${translatedVisit}`;
                         if (translatedMarked) {
-                            result += ` ${translatedMarked}`;
+                            result += `${translatedMarked}`;
                         }
+                            result += '。';
                         return result;
                     }
                 ],
@@ -796,11 +797,6 @@ const I18N = {
                     'label[for="reset_login"]',
                     /^\s*Email address\s*<strong>or<\/strong>\s*username\s*$/s,
                     '电子邮箱地址 <strong>或</strong> 用户名'
-                ],
-                [
-                    'p.jump',
-                    /^\s*\((?:See the end of the work for|在作品结尾查看)\s*(<a href="[^"]*#work_endnotes">)(?:notes|注释)(<\/a>)\.\)\s*$/s,
-                    '（在作品结尾查看$1注释$2。）'
                 ],
                 [
                     'p.muted.notice',
@@ -1398,18 +1394,16 @@ const I18N = {
 
         'works_index': {
             'static': {
-                'Sort and Filter': '排序和筛选',
-                'Search within results': '在结果中搜索',
-                'Fandom:': '同人圈：',
-                'Rating:': '分级：',
-                'Archive Warning:': '内容预警：',
-                'Category:': '作品类型：',
+                'Fandom:': '同人圈:',
+                'Rating:': '分级:',
+                'Archive Warning:': 'Archive 预警:',
+                'Category:': '分类:',
                 'Complete?': '已完结？',
-                'Word Count:': '字数：',
-                'Date Updated:': '更新日期：',
-                'Relationship:': 'CP/关系：',
-                'Character:': '角色：',
-                'Additional Tags:': '其她标签：',
+                'Word Count:': '字数:',
+                'Date Updated:': '更新日期:',
+                'Relationship:': '关系:',
+                'Character:': '角色:',
+                'Additional Tags:': '其她标签:',
             },
             'innerHTML_regexp': [],
             'regexp': [],
@@ -2048,6 +2042,7 @@ const I18N = {
                 '←Previous Chapter': '← 上一章',
                 '← Previous Chapter': '← 上一章',
                 'Next Chapter →': '下一章 →',
+                'Next Chapter→': '下一章 →',
                 '← Previous Work': '← 上一作品',
                 'Next Work →': '下一作品 →',
                 'Download': '下载',
@@ -2063,6 +2058,8 @@ const I18N = {
                 'Add to collections': '添加到合集',
                 'Private bookmark': '私人书签',
                 'Create': '创建',
+                'Series this work belongs to:': '所属系列：',
+                'Works inspired by this one:': '衍生作品：',
             },
             'innerHTML_regexp': [
                 ['dt.rating.tags', /^(\s*)Rating:(\s*)$/, '$1分级:$2'],
@@ -2092,25 +2089,15 @@ const I18N = {
                 ['h3.title', /<a (.*?)>Chapter (\d+)<\/a>/s, '<a $1>第 $2 章</a>'],
                 ['h4.heading.byline', /^\s*(<span>.+?<\/span>)\s*<span class="role">\s*\(Guest\)\s*<\/span>\s*<span class="parent">\s*on Chapter (\d+)\s*<\/span>[\s\S]*?$/, '$1（访客）于 第 $2 章'],
                 ['h4.heading.byline', /^\s*(<a\s+href="\/users\/.+?">.+?<\/a>)\s*<span class="parent">\s*on Chapter (\d+)\s*<\/span>[\s\S]*?$/, '$1 于 第 $2 章'],
+                ['p.jump', /\(See the end of the work for (<a href="[^"]*#work_endnotes">)notes(<\/a>)\.\)/, '（在作品结尾查看$1注释$2。）'],
                 ['p.jump', /\(See the end of the work for (<a.*?>)more notes(<\/a>)\.\)/, '（在作品结尾查看$1更多注释$2。）'],
                 ['div.chapter div.notes > p', /\(See the end of the chapter for\s*(<a.*?>)notes(<\/a>)\.\)/, '（在本章结尾查看$1注释$2。）'],
-                ['p.kudos', /^([\s\S]*?)\s*left kudos on this work!\s*$/s, 
-                    (match, content) => {
-                        if (!content) return match;
-                        
-                        let translatedContent = content
-                            .replace(/\s+and\s+(?=<a)/g, ' 和 ')
-                            .replace(/\s+as well as\s+/g, '，以及 ')
-                            .replace(/([\d,]+)\s+guest(s)?/g, '$1 位访客');
-                        
-                        return translatedContent.trim() + ' 点赞了此作品！';
-                    }
-                ],
+                ['p.jump', /\(See the end of the work for (<a href="[^"]*#children">)other works inspired by this one(<\/a>)\.\)/, '（在作品结尾查看$1相关衍生作品$2。）'],
                 ['h4.heading', /(\s*<span class="byline">.*?<\/span>\s*)save a bookmark!/s, '$1保存书签！'],
                 [
-                    'dd.series span.position',
-                    /^Part (\d+) of (<a href="\/series\/\d+">.*?<\/a>)$/s,
-                    '$2 第 $1 部分'
+                    'div.series span.position, dd.series span.position',
+                    /^\s*Part (\d+) of (<a href="\/series\/.*?">.*?<\/a>)(.*)$/si,
+                    '$2 第 $1 部分$3'
                 ],
                 [
                     'p.notice',
@@ -5134,7 +5121,6 @@ function translateSortButtons() {
         'Fandom': '同人圈',
         'Prompter': '梗提供者',
         'Date': '日期'
-
     };
     const sortButtons = document.querySelectorAll('a[title="sort up"], a[title="sort down"]');
     sortButtons.forEach(button => {
@@ -5343,4 +5329,56 @@ function translateFlashMessages() {
             flash.innerHTML = newHTML;
         }
     });
+}
+
+/**
+ * 翻译点赞区域
+ */
+function translateKudosSection() {
+    const kudosDiv = document.getElementById('kudos');
+    if (!kudosDiv || kudosDiv.dataset.kudosObserverAttached === 'true') {
+        return;
+    }
+    const translateParagraphContent = (pElement) => {
+        let html = pElement.innerHTML;
+        const originalHtml = html;
+        html = html.replace(
+            /(<a[^>]*>)([\d,]+)\s+more\s+users(<\/a>)/g,
+            '$1 $2 位用户$3'
+        );
+        html = html.replace(
+            /as well as\s+([\d,]+)\s+guests\s+left kudos on this work!/g,
+            '，以及 $1 位访客点赞了此作品！'
+        );
+        html = html.replace(
+            /left kudos on this work!/g,
+            '点赞了此作品！'
+        );
+        html = html.replace(
+            /,\s*and\s*(<a [^>]+>.*?<\/a>)/g,
+            '，和 $1'
+        );
+        html = html.replace(
+            /(<span id="kudos_more_connector">), and (<\/span>)/g,
+            '$1，和 $2'
+        );
+        if (html !== originalHtml) {
+            pElement.innerHTML = html;
+        }
+    };
+    const observer = new MutationObserver(() => {
+        const currentP = kudosDiv.querySelector('p.kudos');
+        if (currentP) {
+            translateParagraphContent(currentP);
+        }
+    });
+    observer.observe(kudosDiv, {
+        childList: true,
+        subtree: true
+    });
+    kudosDiv.dataset.kudosObserverAttached = 'true';
+    const initialP = kudosDiv.querySelector('p.kudos');
+    if (initialP) {
+        translateParagraphContent(initialP);
+    }
 }
