@@ -2,7 +2,7 @@
 // @name         AO3 汉化插件
 // @namespace    https://github.com/V-Lipset/ao3-chinese
 // @description  中文化 AO3 界面，可调用 AI 实现简介、注释、评论以及全文翻译。
-// @version      1.3.0-2025-08-03
+// @version      1.3.1-2025-08-06
 // @author       V-Lipset
 // @license      GPL-3.0
 // @match        https://archiveofourown.org/*
@@ -12,11 +12,12 @@
 // @updateURL    https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/main.user.js
 // @require      https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/zh-cn.js
 // @connect      raw.githubusercontent.com
+// @connect      api.together.xyz
+// @connect      www.codegeneration.ai
 // @connect      open.bigmodel.cn
 // @connect      api.deepseek.com
 // @connect      generativelanguage.googleapis.com
-// @connect      api.together.xyz
-// @connect      www.codegeneration.ai
+// @connect      api.groq.com
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
@@ -108,12 +109,9 @@
             attributeFilter: ['value', 'placeholder', 'aria-label', 'data-confirm', 'title']
         },
 
-        // 文本分块与请求限流的默认配置
         CHUNK_SIZE: 1200,
         PARAGRAPH_LIMIT: 5,
-        REQUEST_DELAY: 200,
 
-        // 特定模型专属请求限流配置
         MODEL_SPECIFIC_LIMITS: {
             'gemini-2.5-pro': {
                 CHUNK_SIZE: 3000,
@@ -125,12 +123,8 @@
             }
         },
 
-        // 段落分隔
-        PARAGRAPH_SEPARATOR: '\n\n[|||]\n\n',
-
         ACTIVATION_URLS: [
-            'https://www.codegeneration.ai/activate-v2',
-            'https://web.chatbox.ai/api/config'
+            'https://www.codegeneration.ai/activate-v2'
         ],
 
         transEngine: GM_getValue('transEngine', 'together_ai'),
@@ -142,16 +136,19 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                getRequestData: (paragraphs, glossary) => createRequestData( 
-                    'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
-                    sharedSystemPrompt,
-                    paragraphs,
-                    glossary
-                ),
+                getRequestData: (paragraphs, glossary) => {
+                    const model = GM_getValue('together_model', 'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8');
+                    return createRequestData( 
+                        model,
+                        sharedSystemPrompt,
+                        paragraphs,
+                        glossary
+                    );
+                },
                 responseIdentifier: 'choices[0].message.content',
             },
-            chatglm_official: {
-                name: 'ChatGLM',
+            zhipu_ai: {
+                name: 'Zhipu AI',
                 url_api: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -215,6 +212,22 @@
                 },
                 responseIdentifier: 'candidates[0].content.parts[0].text',
             },
+            groq_ai: {
+                name: 'Groq AI',
+                url_api: 'https://api.groq.com/openai/v1/chat/completions',
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                getRequestData: (paragraphs, glossary) => {
+                    const model = GM_getValue('groq_model', 'meta-llama/llama-4-maverick-17b-128e-instruct');
+                    return createRequestData(
+                        model,
+                        sharedSystemPrompt,
+                        paragraphs,
+                        glossary
+                    );
+                },
+                responseIdentifier: 'choices[0].message.content',
+            },
         }
     };
 	
@@ -223,7 +236,7 @@
     /**
      * 更新页面设置
      */
-    function updatePageConfig(currentPageChangeTrigger) {
+    function updatePageConfig() {
         const newType = detectPageType();
         if (newType && newType !== pageConfig.currentPageType) {
             pageConfig = buildPageConfig(newType);
@@ -388,7 +401,7 @@
 
         if (document.querySelector('ul.media.fandom.index.group')) return 'media_index';
         if (document.querySelector('div#main.owned_tag_sets-show')) return 'owned_tag_sets_show';
-        const { hostname, pathname, search } = window.location;
+        const { pathname, search } = window.location;
         // 忽略 /first_login_help 页面
         if (pathname.startsWith('/first_login_help')) {
             return false;
@@ -585,14 +598,12 @@
 
     /**
      * transElement 函数：翻译指定元素的文本内容或属性。
-     * @param {Element|DOMStringMap|Node} el - 需要翻译的元素或元素的数据集
-     * @param {string} field - 需要翻译的属性名称或文本内容字段
      */
     function transElement(el, field) {
         if (!el || !el[field]) return false;
         const text = el[field];
         if (typeof text !== 'string' || !text.trim()) return false;
-        const translatedText = transText(text);
+        const translatedText = transText(text, el);
         if (translatedText && translatedText !== text) {
             try {
                 el[field] = translatedText;
@@ -603,17 +614,17 @@
 
     /**
      * transText 函数：翻译文本内容。
-     * @param {string} text - 需要翻译的文本内容
-     * @returns {string|false} 翻译后的文本内容
      */
-    function transText(text) {
+    function transText(text, el) {
         if (!text || typeof text !== 'string') return false;
         const originalText = text;
         let translatedText = text;
+
         const applyFlexibleDict = (targetText, dict) => {
             if (!dict) return targetText;
             const keys = Object.keys(dict);
             if (keys.length === 0) return targetText;
+            
             const regexParts = keys.map(key => {
                 const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 if (/^[\w\s]+$/.test(key)) {
@@ -623,15 +634,28 @@
                 }
             });
             const flexibleRegex = new RegExp(`(${regexParts.join('|')})`, 'g');
+
+            if (el && el.nodeType === Node.TEXT_NODE && el.parentElement && el.parentElement.matches('h2.heading a.tag')) {
+                const fullTagText = el.parentElement.textContent.trim();
+                if (dict[fullTagText]) {
+                    return targetText.replace(fullTagText, dict[fullTagText]);
+                } else {
+                    return targetText;
+                }
+            }
+
             return targetText.replace(flexibleRegex, (matched) => dict[matched] || matched);
         };
+
         translatedText = applyFlexibleDict(translatedText, pageConfig.pageFlexibleDict);
         translatedText = applyFlexibleDict(translatedText, pageConfig.globalFlexibleDict);
+
         const staticDict = pageConfig.staticDict || {};
         const trimmedText = translatedText.trim();
         if (staticDict[trimmedText]) {
             translatedText = translatedText.replace(trimmedText, staticDict[trimmedText]);
         }
+
         if (FeatureSet.enable_RegExp && pageConfig.regexpRules) {
             for (const rule of pageConfig.regexpRules) {
                 if (!Array.isArray(rule) || rule.length !== 2) continue;
@@ -647,6 +671,29 @@
         }
         return translatedText !== originalText ? translatedText : false;
     }
+
+	/**
+	 * 翻译标题中的标签
+	 */
+	function translateHeadingTags() {
+		const headingTags = document.querySelectorAll('h2.heading a.tag');
+		if (headingTags.length === 0) return;
+		const fullDictionary = {
+			...pageConfig.staticDict,
+			...pageConfig.globalFlexibleDict,
+			...pageConfig.pageFlexibleDict
+		};
+		headingTags.forEach(tagElement => {
+			if (tagElement.hasAttribute('data-translated-by-custom-function')) {
+				return;
+			}
+			const originalText = tagElement.textContent.trim();
+			if (fullDictionary[originalText]) {
+				tagElement.textContent = fullDictionary[originalText];
+			} 
+			tagElement.setAttribute('data-translated-by-custom-function', 'true');
+		});
+	}
 
     /**
      * fetchTranslatedText 函数：从特定页面的词库中获得翻译文本内容。
@@ -674,65 +721,10 @@
     }
 
     /**
-     * chunkTextparagraphs 函数：实现文本分块。
-     */
-    function chunkText(paragraphs) {
-        const chunks = [];
-        let currentChunk = [];
-        let currentCharCount = 0;
-
-        for (const p of paragraphs) {
-            const pLength = p.textContent.length;
-            if (pLength === 0) continue;
-
-            if (
-                currentChunk.length > 0 &&
-                (currentCharCount + pLength > CONFIG.CHUNK_SIZE || currentChunk.length >= CONFIG.PARAGRAPH_LIMIT)
-            ) {
-                chunks.push(currentChunk);
-                currentChunk = [];
-                currentCharCount = 0;
-            }
-
-            currentChunk.push(p);
-            currentCharCount += pLength;
-        }
-
-        if (currentChunk.length > 0) {
-            chunks.push(currentChunk);
-        }
-        return chunks;
-    }
-
-    /**
      * sleepms 函数：延时。
      */
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    /**
-     * 翻译并显示单个段落
-     */
-    async function translateAndDisplayParagraph(pElement) {
-        if (pElement.dataset.translated === 'true') return;
-        pElement.dataset.translated = 'true';
-
-        const originalText = pElement.textContent.trim();
-        if (!originalText) return;
-
-        try {
-            const translatedText = await requestRemoteTranslation(originalText);
-            if (translatedText && !translatedText.startsWith('翻译失败')) {
-                const translationNode = document.createElement('p');
-                translationNode.className = 'translated-by-ao3-script';
-                translationNode.style.cssText = 'margin-top: 0.25em; margin-bottom: 1em;';
-                translationNode.textContent = translatedText;
-                pElement.after(translationNode);
-            }
-        } catch (e) {
-            console.error('Paragraph translation failed:', e);
-        }
     }
 
     /**
@@ -859,7 +851,7 @@
      * @param {Array<HTMLElement>} paragraphs - 需要翻译的段落元素数组
      * @param {object} [options] - 包含重试配置的对象
      */
-    async function translateParagraphs(paragraphs, { retryCount = 0, maxRetries = 1 } = {}) {
+    async function translateParagraphs(paragraphs, { retryCount = 0, maxRetries = 3 } = {}) {
         const results = new Map();
         if (paragraphs.length === 0) return results;
 
@@ -890,11 +882,6 @@
             }
             
             if (translatedParts.length !== paragraphs.length) {
-                console.error('AI 返回的分段数量与请求的数量不匹配。', {
-                    expected: paragraphs.length,
-                    got: translatedParts.length,
-                    response: combinedTranslation
-                });
                 throw new Error('AI 响应格式不一致，分段数量不匹配');
             }
 
@@ -909,47 +896,65 @@
             console.error(`翻译失败 (尝试 ${retryCount + 1}/${maxRetries + 1}):`, e.message);
 
             if (retryCount < maxRetries) {
-                console.log(`将在 1 秒后重试...`);
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 return await translateParagraphs(paragraphs, { retryCount: retryCount + 1, maxRetries });
             } else {
-                console.error("所有重试均失败，翻译终止。");
-                const finalErrorMessage = `翻译失败：${e.message}`;
-                paragraphs.forEach(p => {
-                    results.set(p, { status: 'error', content: finalErrorMessage });
-                });
-                return results;
+                if (e.message.includes('分段数量不匹配')) {
+                    console.warn("批量翻译失败，切换到逐段翻译模式...");
+                    const fallbackResults = new Map();
+                    for (const p of paragraphs) {
+                        const singleResultMap = await translateParagraphs([p], { maxRetries: 1 });
+                        const singleResult = singleResultMap.get(p);
+                        if (singleResult && singleResult.status === 'success') {
+                            fallbackResults.set(p, singleResult);
+                        } else {
+                            const errorMessage = (singleResult && singleResult.content) ? singleResult.content : '未知错误';
+                            console.error(`逐段翻译失败: ${errorMessage}`);
+                            fallbackResults.set(p, { status: 'error', content: null });
+                        }
+                    }
+                    return fallbackResults;
+                } else {
+                    console.error("所有重试均失败，翻译终止。");
+                    const finalErrorMessage = `翻译失败：${e.message}`;
+                    paragraphs.forEach(p => {
+                        results.set(p, { status: 'error', content: finalErrorMessage });
+                    });
+                    return results;
+                }
             }
         }
     }
     
     /**
-     * 翻译引擎（可清除译文）。
+     * 翻译引擎（可清除译文）
      * @param {HTMLElement} containerElement - 容器元素
      * @param {function} onComplete - 全部翻译完成后的回调
      */
     async function runTranslationEngineForBlock(containerElement, onComplete) {
         const translatableSelectors = 'p, blockquote, li, h1, h2, h3:not(.landmark), h4, h5, h6';
-        let units = Array.from(containerElement.querySelectorAll(translatableSelectors));
-        if (units.length === 0 && containerElement.textContent.trim()) {
-            units = [containerElement];
-        }
-        const skippableHeaders = ['Summary', 'Notes', 'Work Text'];
-        units = units.filter(p => !skippableHeaders.includes(p.textContent.trim()));
+        let allPotentialUnits = Array.from(containerElement.querySelectorAll(translatableSelectors));
 
-        units = units.filter(unit => {
-            let parent = unit.parentElement;
-            while (parent && parent !== containerElement) {
-                if (units.includes(parent)) return false;
-                parent = parent.parentElement;
+        if (allPotentialUnits.length === 0 && containerElement.textContent.trim()) {
+            allPotentialUnits = [containerElement];
+        }
+
+        const skippableHeaders = ['Summary', 'Notes', 'Work Text'];
+        const candidateUnits = allPotentialUnits.filter(p => !skippableHeaders.includes(p.textContent.trim()));
+
+        const units = [];
+        for (const unit of candidateUnits) {
+            if (!unit.querySelector(translatableSelectors)) {
+                units.push(unit);
             }
-            return true;
-        });
+        }
 
         if (units.length === 0) {
-            onComplete?.();
+            if (onComplete) onComplete();
             return;
         }
+
+        units.forEach(unit => unit.dataset.translationState = 'translating');
 
         const translationResults = await translateParagraphs(units);
 
@@ -957,20 +962,24 @@
             const result = translationResults.get(unit);
             if (result) {
                 const transNode = document.createElement('div');
+                const tagName = unit.tagName.toLowerCase();
                 if (result.status === 'success') {
                     transNode.className = 'translated-by-ao3-script';
-                    transNode.style.cssText = 'margin-top: 0.25em; margin-bottom: 1em;';
-                    transNode.innerHTML = `<${unit.tagName.toLowerCase()}>${result.content}</${unit.tagName.toLowerCase()}>`;
+                    transNode.innerHTML = `<${tagName}>${result.content}</${tagName}>`;
+                    unit.dataset.translationState = 'translated';
                 } else {
                     transNode.className = 'translated-by-ao3-script-error';
-                    transNode.style.cssText = 'margin-top: 0.25em; margin-bottom: 1em;';
-                    transNode.innerHTML = `<${unit.tagName.toLowerCase()}>${result.content}</${unit.tagName.toLowerCase()}>`;
+                    transNode.innerHTML = `<${tagName}>${result.content}</${tagName}>`;
+                    unit.dataset.translationState = 'error';
                 }
+                transNode.style.cssText = 'margin-top: 0.25em; margin-bottom: 1em;';
                 unit.after(transNode);
+            } else {
+                unit.dataset.translationState = 'error';
             }
         });
 
-        onComplete?.();
+        if (onComplete) onComplete();
     }
 
     /**
@@ -995,7 +1004,6 @@
             });
 
             elementsToModify.forEach(el => {
-                (unsafeWindow.consola || console).info("检测到段落内含<br>分隔，正在进行预处理...");
                 const separatorRegex = /(?:\s*<br\s*\/?>\s*){2,}/ig;
                 const fragmentsHTML = el.innerHTML.split(separatorRegex);
                 
@@ -1016,19 +1024,19 @@
             });
 
             const translatableSelectors = 'p, blockquote, li, h1, h2, h3, h4, h5, h6, hr';
-            let allUnits = Array.from(container.querySelectorAll(translatableSelectors));
+            const allPotentialUnits = Array.from(container.querySelectorAll(translatableSelectors));
             
             const skippableHeaders = ['Summary', 'Notes', 'Work Text', 'Chapter Text'];
-            allUnits = allUnits.filter(p => !skippableHeaders.includes(p.textContent.trim()));
+            const candidateUnits = allPotentialUnits.filter(p => !skippableHeaders.includes(p.textContent.trim()));
 
-            return allUnits.filter(unit => {
-                let parent = unit.parentElement;
-                while (parent && parent !== container) {
-                    if (allUnits.includes(parent)) return false;
-                    parent = parent.parentElement;
+            const finalUnits = [];
+            for (const unit of candidateUnits) {
+                if (!unit.querySelector(translatableSelectors)) {
+                    finalUnits.push(unit);
                 }
-                return true;
-            });
+            }
+            
+            return finalUnits;
         }
         
         const allUnits = preProcessAndGetUnits(containerElement);
@@ -1091,6 +1099,8 @@
                             p.after(transNode);
                             elementState.delete(p);
                         }
+                    } else if (result && result.status === 'error' && result.content === null) {
+                        elementState.delete(p);
                     } else {
                         elementState.delete(p);
                     }
@@ -1168,46 +1178,6 @@
     }
 
     /**
-     * 针对非标准排版进行预处理，将其转换为标准的 <p> 标签结构。
-     * @param {HTMLElement} container - 需要进行预处理的容器元素
-     */
-    function preProcessContentForIrregularLayouts(container) {
-        const directParagraphs = container.querySelectorAll(':scope > p');
-        const directChildren = container.children;
-
-        if (directParagraphs.length > 1 || directChildren.length > 5) {
-            return;
-        }
-
-        let contentHTML = container.innerHTML;
-
-        if (directParagraphs.length === 1) {
-            contentHTML = directParagraphs[0].innerHTML;
-        } else if (directChildren.length === 1 && (directChildren[0].tagName === 'DIV' || directChildren[0].tagName === 'SPAN')) {
-            contentHTML = directChildren[0].innerHTML;
-        }
-
-        const separatorRegex = /(?:\s*<br\s*\/?>\s*){1,}/i;
-        const fragments = contentHTML.split(separatorRegex);
-
-        if (fragments.length <= 1) {
-            return;
-        }
-
-        console.log("AO3 汉化插件：检测到非标准文章排版，正在进行自动预处理...");
-
-        const newHTML = fragments
-            .map(fragment => fragment.trim())
-            .filter(fragment => fragment.length > 0)
-            .map(fragment => `<p>${fragment}</p>`)
-            .join('');
-
-        if (newHTML) {
-            container.innerHTML = newHTML;
-        }
-    }
-
-    /**
      * getNestedProperty 函数：获取嵌套属性的安全函数。
      * @param {Object} obj - 需要查询的对象
      * @param {string} path - 属性路径
@@ -1225,9 +1195,6 @@
             return undefined;
         }, obj);
     }
-
-    // 用于缓存 Together AI 的 API Key
-    let togetherApiKey = null;
 
     /**
      * 获取并缓存 Together AI 的 API Key
@@ -1265,7 +1232,7 @@
                                 reject(new Error(`Failed to parse response from ${url}: ${e.message}`));
                             }
                         },
-                        onerror: (error) => reject(new Error(`Network error at ${url}`)),
+                        onerror: () => reject(new Error(`Network error at ${url}`)),
                         ontimeout: () => reject(new Error(`Timeout at ${url}`))
                     });
                 });
@@ -1286,7 +1253,7 @@
     /**
      * 远程翻译请求函数
      */
-    async function requestRemoteTranslation(paragraphs, { retryCount = 0, maxRetries = 3 } = {}) {
+    async function requestRemoteTranslation(paragraphs, { retryCount = 0, maxRetries = 5 } = {}) {
         const engineName = GM_getValue('transEngine', 'together_ai');
         const engineConfig = CONFIG.TRANS_ENGINES[engineName];
         if (!engineConfig) {
@@ -1380,15 +1347,15 @@
                 }
 
             } else {
-                const { url_api, method, getRequestData, responseIdentifier } = engineConfig;
+                const { url_api, method, responseIdentifier } = engineConfig;
                 let headers = { ...engineConfig.headers };
 
-                if (engineName === 'chatglm_official' || engineName === 'deepseek_ai') {
+                if (engineName === 'together_ai') {
+                    headers['Authorization'] = `Bearer ${await getTogetherApiKey()}`;
+                } else {
                     const apiKey = GM_getValue(`${engineName.split('_')[0]}_api_key`);
                     if (!apiKey) throw new Error(`请先在菜单中设置 ${engineConfig.name} API Key`);
                     headers['Authorization'] = `Bearer ${apiKey}`;
-                } else if (engineName === 'together_ai') {
-                    headers['Authorization'] = `Bearer ${await getTogetherApiKey()}`;
                 }
 
                 const requestData = engineConfig.getRequestData(paragraphs);
@@ -1408,8 +1375,8 @@
                     let responseData = res.response;
                     if (typeof responseData === 'string') try { responseData = JSON.parse(responseData); } catch (e) {}
                     
-                    if (engineName === 'chatglm_official' && getNestedProperty(responseData, 'error.code') === '1301') {
-                        throw new Error('因含有敏感内容，请求被 ChatGLM 安全策略阻止');
+                    if (engineName === 'zhipu_ai' && getNestedProperty(responseData, 'error.code') === '1301') {
+                        throw new Error('因含有敏感内容，请求被 Zhipu AI 安全策略阻止');
                     }
                     
                     if (responseData && typeof responseData === 'object' && responseData.error) {
@@ -1453,12 +1420,12 @@
     /**
      * 设置用户自己的 ChatGLM API Key
      */
-    function setupChatGLMKey() {
-        const currentKey = GM_getValue('chatglm_api_key', '');
-        const newKey = prompt('请输入您的 ChatGLM API Key：', currentKey);
+    function setupZhipuAIKey() {
+        const currentKey = GM_getValue('zhipu_ai_api_key', '');
+        const newKey = prompt('请输入您的 Zhipu AI API Key：', currentKey);
         if (newKey !== null) {
-            GM_setValue('chatglm_api_key', newKey.trim());
-            notifyAndLog(newKey.trim() ? 'ChatGLM API Key 已保存！' : 'ChatGLM API Key 已清除！');
+            GM_setValue('zhipu_ai_api_key', newKey.trim());
+            notifyAndLog(newKey.trim() ? 'Zhipu AI API Key 已保存！' : 'Zhipu AI API Key 已清除！');
         }
     }
 
@@ -1495,6 +1462,18 @@
             } else {
                 notifyAndLog('Google AI API Key 已全部清除。');
             }
+        }
+    }
+
+    /**
+     * 设置用户自己的 Groq AI API Key
+     */
+    function setupGroqAIKey() {
+        const currentKey = GM_getValue('groq_ai_api_key', '');
+        const newKey = prompt('请输入您的 Groq AI API Key：', currentKey);
+        if (newKey !== null) {
+            GM_setValue('groq_ai_api_key', newKey.trim());
+            notifyAndLog(newKey.trim() ? 'Groq AI API Key 已保存！' : 'Groq AI API Key 已清除！');
         }
     }
 
@@ -1555,7 +1534,7 @@
 	    const result = { terms: {} };
 	    const lines = text.split('\n');
 
-	    const metadataRegex = /^\s*(author|version|last_updated|作者|版本|更新时间)\s*[:：]\s*(.*?)\s*[,，]?\s*$/;
+	    const metadataRegex = /^\s*(maintainer|version|last_updated|维护者|版本号|更新时间)\s*[:：]\s*(.*?)\s*[,，]?\s*$/;
 	    const termsMarkerRegex = /^\s*(?:terms|词条)\s*[:：]?\s*$/i;
 	    let termsStartIndex = -1;
 
@@ -1573,8 +1552,8 @@
 	            let value = metadataMatch[2].trim();
 
                 const keyMap = {
-                    '作者': 'author',
-                    '版本': 'version',
+                    '维护者': 'maintainer',
+                    '版本号': 'version',
                     '更新时间': 'last_updated'
                 };
                 const mappedKey = keyMap[key] || key;
@@ -1692,7 +1671,7 @@
 
                     const importedCount = Object.keys(onlineTerms).length;
                     const authorName = onlineData.author || '未知';
-                    notifyAndLog(`已成功导入 “${glossaryName}” 术语表。\n作者：${authorName}，版本号：${onlineData.version}。共 ${importedCount} 个词条。`, '导入成功');
+                    notifyAndLog(`已成功导入 “${glossaryName}” 术语表。\n版本号：${onlineData.version}，维护者：${authorName}。共 ${importedCount} 个词条。`, '导入成功');
 
                 } catch (e) {
                     console.error(`处理 “${glossaryName}” 时发生严重错误:`, e);
@@ -1720,7 +1699,7 @@
             const glossaryName = decodeURIComponent(url.split('/').pop().replace(/\.[^/.]+$/, ''));
             const author = metadata[url].author || '未知';
             const version = metadata[url].version;
-            return `${index + 1}. ${glossaryName}（v${version}，${author}）`;
+            return `${index + 1}. ${glossaryName}\n    版本：v${version}，维护者：${author}`;
         }).join('\n');
         const choice = prompt(
             '若您想要移除某个术语表，请输入对应编号（仅输入数字）。注意，此操作彻底移除该在线术语表及其所有词条。\n\n' + urlListText,
@@ -1796,14 +1775,14 @@
                 const onlineVersion = onlineData.version;
                 if (onlineVersion && compareVersions(onlineVersion, localVersion) > 0) {
                     const authorName = onlineData.author || '未知';
-                    console.log(`发现 “${glossaryName}” 的新版本: ${onlineVersion} (本地为 ${localVersion})`);
+                    console.log(`发现 “${glossaryName}” 的新版本: v${onlineVersion} (本地为 v${localVersion})`);
                     allImportedGlossaries[url] = onlineData.terms || {};
                     metadata[url].author = authorName;
                     metadata[url].version = onlineVersion;
                     metadata[url].last_updated = new Date().toISOString();
                     updatedCount++;
                     if (!isManual) {
-                        notifyAndLog(`“${glossaryName}” 术语表已自动更新到 v${onlineVersion}！\n作者：${authorName}`, '更新成功');
+                        notifyAndLog(`“${glossaryName}” 术语表已自动更新到 v${onlineVersion}！\n维护者：${authorName}`, '更新成功');
                     }
                 }
             } catch (e) {
@@ -1884,52 +1863,38 @@
     }
 
     /**
-     * 翻译文本清理函数
+     * 翻译文本处理函数
      */
     const AdvancedTranslationCleaner = new (class {
         constructor() {
             this.metaKeywords = [
-                '原文', '输出', '译文', '翻译', '说明', '遵守', '润色', '语境', '保留', '符合', '指令',
-                'Translation', 'Original text', 'Output', 'Note', 'Stage', 'Strategy', 'Polish', 'Retain', 'Glossary', 'Adherence'
+                '原文', '输出', '说明', '遵守', '润色', '语境', '保留', '符合', '指令',
+                'Original text', 'Output', 'Note', 'Stage', 'Strategy', 'Polish', 'Retain', 'Glossary', 'Adherence'
             ];
             this.junkLineRegex = new RegExp(`^\\s*(\\d+\\.\\s*)?(${this.metaKeywords.join('|')})[:：\\s]`, 'i');
             this.lineNumbersRegex = /^\d+\.\s*/;
         }
-
         clean(text) {
             if (!text || typeof text !== 'string') {
                 return '';
             }
-
             const lines = text.split('\n');
             const cleanedLines = lines.filter(line => !this.junkLineRegex.test(line));
             let cleanedText = cleanedLines.join('\n');
             cleanedText = cleanedText.replace(this.lineNumbersRegex, '');
-
             cleanedText = cleanedText.replace(/[\s\u3000]+/g, ' ');
-
             cleanedText = cleanedText.replace(/([\u4e00-\u9fa5])([a-zA-Z0-9])/g, '$1 $2');
             cleanedText = cleanedText.replace(/([a-zA-Z0-9])([\u4e00-\u9fa5])/g, '$1 $2');
-
+            cleanedText = cleanedText.replace(/([a-zA-Z0-9])([\u3000-\u303F\uff01-\uff5e])/g, '$1 $2');
             cleanedText = cleanedText.replace(/(?<=[\u4e00-\u9fa5])\s(?=[\u4e00-\u9fa5])/g, '');
             cleanedText = cleanedText.replace(/(?<=[\u4e00-\u9fa5])\s(?=<)/g, '');
             cleanedText = cleanedText.replace(/(?<=>)\s(?=[\u4e00-\u9fa5])/g, '');
-
-            cleanedText = cleanedText.replace(/\s+(?=[\u3000-\u303F\uff01-\uff5e])/g, '');
+            cleanedText = cleanedText.replace(/(?<=[\u4e00-\u9fa5])\s+(?=[\u3000-\u303F\uff01-\uff5e])/g, '');
             cleanedText = cleanedText.replace(/(?<=[\u3000-\u303F\uff01-\uff5e])\s+(?=[\u4e00-\u9fa5])/g, '');
-
             return cleanedText.trim();
         }
     })();
 
-    /**
-     * 翻译后处理函数
-     * @param {string} text - 从 AI 返回的单段译文
-     * @returns {string} - 清理后的译文
-     */
-    function postprocessTranslationCleanup(text) {
-        return AdvancedTranslationCleaner.clean(text);
-    }
 
     /**
      * 通用函数：对页面上所有“分类”复选框区域进行重新排序。
@@ -2061,21 +2026,35 @@
                 });
 
                 const currentEngineId = GM_getValue('transEngine', 'together_ai');
-                const engineNameMap = {
-                    'together_ai': 'Llama',
-                    'chatglm_official': 'ChatGLM', 'deepseek_ai': 'DeepSeek', 'google_ai': 'Google AI'
+                const engineDisplayNameMap = {
+                    'together_ai': 'Together AI',
+                    'zhipu_ai': 'Zhipu AI',
+                    'deepseek_ai': 'DeepSeek',
+                    'google_ai': 'Google AI',
+                    'groq_ai': 'Groq AI'
                 };
-                const engineMasterOrder = ['together_ai', 'chatglm_official', 'deepseek_ai', 'google_ai'];
-                const currentServiceIndex = engineMasterOrder.indexOf(currentEngineId);
-                const nextServiceIndex = (currentServiceIndex + 1) % engineMasterOrder.length;
-                const nextEngineId = engineMasterOrder[nextServiceIndex];
-                register(`⇄ 翻译服务：${engineNameMap[currentEngineId]}`, () => {
-                    GM_setValue('transEngine', nextEngineId);
-                    notifyAndLog(`翻译服务已切换为: ${engineNameMap[nextEngineId]}`);
+                
+                register(`⇄ 翻译服务：${engineDisplayNameMap[currentEngineId]}`, () => {
+                    currentMenuView = 'select_service';
                     renderMenuCommands();
                 });
 
-                if (currentEngineId === 'deepseek_ai') {
+                if (currentEngineId === 'together_ai') {
+                    const modelMapping = {
+                        'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8': 'Llama 4',
+                        'deepseek-ai/DeepSeek-V3': 'DeepSeek V3'
+                    };
+                    const modelOrder = Object.keys(modelMapping);
+                    const currentModelId = GM_getValue('together_model', 'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8');
+                    const currentModelIndex = modelOrder.indexOf(currentModelId);
+                    const nextModelIndex = (currentModelIndex + 1) % modelOrder.length;
+                    const nextModelId = modelOrder[nextModelIndex];
+                    register(`⇄ 使用模型：${modelMapping[currentModelId]}`, () => {
+                        GM_setValue('together_model', nextModelId);
+                        notifyAndLog(`Together AI 模型已切换为: ${modelMapping[nextModelId]}`);
+                        renderMenuCommands();
+                    });
+                } else if (currentEngineId === 'deepseek_ai') {
                     const modelMapping = { 'deepseek-chat': 'DeepSeek V3', 'deepseek-reasoner': 'DeepSeek R1' };
                     const modelOrder = Object.keys(modelMapping);
                     const currentModelId = GM_getValue('deepseek_model', 'deepseek-chat');
@@ -2103,16 +2082,63 @@
                         notifyAndLog(`Google AI 模型已切换为: ${modelMapping[nextModelId]}`);
                         renderMenuCommands();
                     });
+                } else if (currentEngineId === 'groq_ai') {
+                    const modelMapping = {
+                        'meta-llama/llama-4-maverick-17b-128e-instruct': 'Llama 4',
+                        'moonshotai/kimi-k2-instruct': 'Kimi K2',
+                        'deepseek-r1-distill-llama-70b': 'DeepSeek 70B',
+                        'openai/gpt-oss-120b': 'GPT-OSS 120B'
+                    };
+                    const modelOrder = Object.keys(modelMapping);
+                    const currentModelId = GM_getValue('groq_model', 'meta-llama/llama-4-maverick-17b-128e-instruct');
+                    const currentModelIndex = modelOrder.indexOf(currentModelId);
+                    const nextModelIndex = (currentModelIndex + 1) % modelOrder.length;
+                    const nextModelId = modelOrder[nextModelIndex];
+                    register(`⇄ 使用模型：${modelMapping[currentModelId]}`, () => {
+                        GM_setValue('groq_model', nextModelId);
+                        notifyAndLog(`Groq AI 模型已切换为: ${modelMapping[nextModelId]}`);
+                        renderMenuCommands();
+                    });
                 }
 
-                if (currentEngineId === 'chatglm_official') {
-                    register('▶ 设置 ChatGLM API Key', setupChatGLMKey);
+                if (currentEngineId === 'zhipu_ai') {
+                    register('▶ 设置 Zhipu AI API Key', setupZhipuAIKey);
                 } else if (currentEngineId === 'deepseek_ai') {
                     register('▶ 设置 DeepSeek API Key', setupDeepSeekKey);
                 } else if (currentEngineId === 'google_ai') {
                     register('▶ 设置 Google AI API Key', setupGoogleAiKeys);
+                } else if (currentEngineId === 'groq_ai') {
+                    register('▶ 设置 Groq AI API Key', setupGroqAIKey);
                 }
             }
+        }
+        else if (currentMenuView === 'select_service') {
+            register('← 返回到主菜单', () => {
+                currentMenuView = 'main';
+                renderMenuCommands();
+            });
+
+            const engineDisplayNameMap = {
+                'together_ai': 'Together AI',
+                'zhipu_ai': 'Zhipu AI',
+                'deepseek_ai': 'DeepSeek',
+                'google_ai': 'Google AI',
+                'groq_ai': 'Groq AI'
+            };
+            const engineMasterOrder = ['together_ai', 'zhipu_ai', 'deepseek_ai', 'google_ai', 'groq_ai'];
+            const currentEngineId = GM_getValue('transEngine', 'together_ai');
+
+            engineMasterOrder
+                .filter(engineId => engineId !== currentEngineId)
+                .forEach(engineId => {
+                    const displayName = engineDisplayNameMap[engineId];
+                    register(`⇄ 切换至：${displayName}`, () => {
+                        GM_setValue('transEngine', engineId);
+                        currentMenuView = 'main';
+                        notifyAndLog(`翻译服务已切换为: ${displayName}`);
+                        renderMenuCommands();
+                    });
+                });
         }
         else if (currentMenuView === 'glossary') {
             register('←返回到主菜单', () => {
@@ -2253,6 +2279,16 @@
                 GM_notification('您的自定义翻译词条已成功迁移到新版本！', 'AO3 汉化插件');
             }
         })();
+        (function() {
+            const oldApiKey = GM_getValue('chatglm_api_key', null);
+            if (oldApiKey) {
+                console.log('AO3 汉化插件：检测到旧版 ChatGLM API Key，正在迁移至 Zhipu AI...');
+                GM_setValue('zhipu_ai_api_key', oldApiKey);
+                GM_deleteValue('chatglm_api_key');
+                console.log('AO3 汉化插件：API Key 迁移成功！');
+                GM_notification('您的 ChatGLM API Key 已成功迁移为 Zhipu AI API Key！', 'AO3 汉化插件');
+            }
+        })();
         checkForGlossaryUpdates(false);
         const globalStyles = document.createElement('style');
         globalStyles.textContent = `
@@ -2372,8 +2408,8 @@
 
         // 通用的后处理器和格式化函数
         handleTrailingPunctuation(rootElement);
-        translateFirstLoginBanner();
         translateSymbolsKeyModal(rootElement);
+        translateFirstLoginBanner();
         translateBookmarkSymbolsKeyModal();
         translateRatingHelpModal();
         translateCategoriesHelp();
@@ -2434,6 +2470,7 @@
         translateTagSetsHeading();
         translateFoundResultsHeading();
         translateTOSPrompt();
+		translateHeadingTags();
         // 统一寻找并重新格式化所有日期容器
         const dateSelectors = [
             '.header.module .meta span.published',
