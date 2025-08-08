@@ -2,7 +2,7 @@
 // @name         AO3 汉化插件
 // @namespace    https://github.com/V-Lipset/ao3-chinese
 // @description  中文化 AO3 界面，可调用 AI 实现简介、注释、评论以及全文翻译。
-// @version      1.3.1-2025-08-06
+// @version      1.3.2-2025-08-08
 // @author       V-Lipset
 // @license      GPL-3.0
 // @match        https://archiveofourown.org/*
@@ -996,7 +996,7 @@
             const elementsToModify = [];
             elementsToProcess.forEach(el => {
                 if (elementState.has(el)) return;
-                const hasBrSeparators = (el.innerHTML.match(/(?:<br\s*\/?>\s*){2,}/i));
+                const hasBrSeparators = (el.innerHTML.match(/(?:<br\s*\/?>\s*)+/i));
                 if (hasBrSeparators) {
                     elementsToModify.push(el);
                 }
@@ -1004,7 +1004,7 @@
             });
 
             elementsToModify.forEach(el => {
-                const separatorRegex = /(?:\s*<br\s*\/?>\s*){2,}/ig;
+                const separatorRegex = /(?:\s*<br\s*\/?>\s*)+/ig;
                 const fragmentsHTML = el.innerHTML.split(separatorRegex);
                 
                 const newElements = fragmentsHTML
@@ -1421,10 +1421,10 @@
      * 设置用户自己的 ChatGLM API Key
      */
     function setupZhipuAIKey() {
-        const currentKey = GM_getValue('zhipu_ai_api_key', '');
+        const currentKey = GM_getValue('zhipu_api_key', '');
         const newKey = prompt('请输入您的 Zhipu AI API Key：', currentKey);
         if (newKey !== null) {
-            GM_setValue('zhipu_ai_api_key', newKey.trim());
+            GM_setValue('zhipu_api_key', newKey.trim());
             notifyAndLog(newKey.trim() ? 'Zhipu AI API Key 已保存！' : 'Zhipu AI API Key 已清除！');
         }
     }
@@ -1469,17 +1469,17 @@
      * 设置用户自己的 Groq AI API Key
      */
     function setupGroqAIKey() {
-        const currentKey = GM_getValue('groq_ai_api_key', '');
+        const currentKey = GM_getValue('groq_api_key', '');
         const newKey = prompt('请输入您的 Groq AI API Key：', currentKey);
         if (newKey !== null) {
-            GM_setValue('groq_ai_api_key', newKey.trim());
+            GM_setValue('groq_api_key', newKey.trim());
             notifyAndLog(newKey.trim() ? 'Groq AI API Key 已保存！' : 'Groq AI API Key 已清除！');
         }
     }
 
-    const LOCAL_GLOSSARY_KEY = 'ao3_local_glossary';// 用于存储用户手动创建的术语
-    const IMPORTED_GLOSSARY_KEY = 'ao3_imported_glossary';// 用于存储所有在线导入的术语
-    const GLOSSARY_METADATA_KEY = 'ao3_glossary_metadata';// 用于储存导入的术语表的信息
+    const LOCAL_GLOSSARY_KEY = 'ao3_local_glossary'; // 用于存储用户手动创建的术语
+    const IMPORTED_GLOSSARY_KEY = 'ao3_imported_glossary'; // 用于存储所有在线导入的术语
+    const GLOSSARY_METADATA_KEY = 'ao3_glossary_metadata'; // 用于储存导入的术语表的信息
 
     /**
      * 管理用户手动设置的本地术语表
@@ -1663,15 +1663,15 @@
                     
                     const metadata = GM_getValue(GLOSSARY_METADATA_KEY, {});
                     metadata[url] = { 
-                        author: onlineData.author || '未知', 
-                        version: onlineData.version, 
+                        maintainer: onlineData.maintainer || '未知',
+                        version: onlineData.version,
                         last_imported: new Date().toISOString() 
                     };
                     GM_setValue(GLOSSARY_METADATA_KEY, metadata);
 
                     const importedCount = Object.keys(onlineTerms).length;
-                    const authorName = onlineData.author || '未知';
-                    notifyAndLog(`已成功导入 “${glossaryName}” 术语表。\n版本号：${onlineData.version}，维护者：${authorName}。共 ${importedCount} 个词条。`, '导入成功');
+                    const maintainerName = onlineData.maintainer || '未知';
+                    notifyAndLog(`已成功导入 “${glossaryName}” 术语表。\n版本号：${onlineData.version}，维护者：${maintainerName}。共 ${importedCount} 个词条。`, '导入成功');
 
                 } catch (e) {
                     console.error(`处理 “${glossaryName}” 时发生严重错误:`, e);
@@ -1697,9 +1697,9 @@
         }
         const urlListText = urls.map((url, index) => {
             const glossaryName = decodeURIComponent(url.split('/').pop().replace(/\.[^/.]+$/, ''));
-            const author = metadata[url].author || '未知';
+            const maintainer = metadata[url].maintainer || '未知';
             const version = metadata[url].version;
-            return `${index + 1}. ${glossaryName}\n    版本：v${version}，维护者：${author}`;
+            return `${index + 1}. ${glossaryName}\n    版本：v${version}，维护者：${maintainer}`;
         }).join('\n');
         const choice = prompt(
             '若您想要移除某个术语表，请输入对应编号（仅输入数字）。注意，此操作彻底移除该在线术语表及其所有词条。\n\n' + urlListText,
@@ -1774,15 +1774,15 @@
                 const localVersion = metadata[url].version;
                 const onlineVersion = onlineData.version;
                 if (onlineVersion && compareVersions(onlineVersion, localVersion) > 0) {
-                    const authorName = onlineData.author || '未知';
+                    const maintainerName = onlineData.maintainer || '未知';
                     console.log(`发现 “${glossaryName}” 的新版本: v${onlineVersion} (本地为 v${localVersion})`);
                     allImportedGlossaries[url] = onlineData.terms || {};
-                    metadata[url].author = authorName;
+                    metadata[url].maintainer = maintainerName;
                     metadata[url].version = onlineVersion;
                     metadata[url].last_updated = new Date().toISOString();
                     updatedCount++;
                     if (!isManual) {
-                        notifyAndLog(`“${glossaryName}” 术语表已自动更新到 v${onlineVersion}！\n维护者：${authorName}`, '更新成功');
+                        notifyAndLog(`“${glossaryName}” 术语表已自动更新到 v${onlineVersion}！\n维护者：${maintainerName}`, '更新成功');
                     }
                 }
             } catch (e) {
@@ -1873,28 +1873,28 @@
             ];
             this.junkLineRegex = new RegExp(`^\\s*(\\d+\\.\\s*)?(${this.metaKeywords.join('|')})[:：\\s]`, 'i');
             this.lineNumbersRegex = /^\d+\.\s*/;
+            this.aiNoteRegex = /\s*（注：[\s\S]*?）\s*/g;
         }
         clean(text) {
             if (!text || typeof text !== 'string') {
                 return '';
             }
-            const lines = text.split('\n');
-            const cleanedLines = lines.filter(line => !this.junkLineRegex.test(line));
-            let cleanedText = cleanedLines.join('\n');
+            let cleanedText = text.split('\n').filter(line => !this.junkLineRegex.test(line)).join('\n');
+            cleanedText = cleanedText.replace(this.aiNoteRegex, '');
             cleanedText = cleanedText.replace(this.lineNumbersRegex, '');
-            cleanedText = cleanedText.replace(/[\s\u3000]+/g, ' ');
+            cleanedText = cleanedText.replace(/(<(em|strong)[^>]*>)([\s\S]*?)(<\/\2>)/g, (_match, openTag, _tagName, content, closeTag) => {
+                return openTag + content.trim() + closeTag;
+            });
+            cleanedText = cleanedText.replace(/\s+(?=<em|<strong)/g, '');
+            cleanedText = cleanedText.replace(/(<\/em>|<\/strong>)\s+/g, '$1');
+            cleanedText = cleanedText.replace(/([a-zA-Z0-9])(<em|<strong)/g, '$1 $2');
+            cleanedText = cleanedText.replace(/(<\/em>|<\/strong>)([a-zA-Z0-9])/g, '$1 $2');
             cleanedText = cleanedText.replace(/([\u4e00-\u9fa5])([a-zA-Z0-9])/g, '$1 $2');
             cleanedText = cleanedText.replace(/([a-zA-Z0-9])([\u4e00-\u9fa5])/g, '$1 $2');
-            cleanedText = cleanedText.replace(/([a-zA-Z0-9])([\u3000-\u303F\uff01-\uff5e])/g, '$1 $2');
-            cleanedText = cleanedText.replace(/(?<=[\u4e00-\u9fa5])\s(?=[\u4e00-\u9fa5])/g, '');
-            cleanedText = cleanedText.replace(/(?<=[\u4e00-\u9fa5])\s(?=<)/g, '');
-            cleanedText = cleanedText.replace(/(?<=>)\s(?=[\u4e00-\u9fa5])/g, '');
-            cleanedText = cleanedText.replace(/(?<=[\u4e00-\u9fa5])\s+(?=[\u3000-\u303F\uff01-\uff5e])/g, '');
-            cleanedText = cleanedText.replace(/(?<=[\u3000-\u303F\uff01-\uff5e])\s+(?=[\u4e00-\u9fa5])/g, '');
+            cleanedText = cleanedText.replace(/\s+/g, ' ');
             return cleanedText.trim();
         }
     })();
-
 
     /**
      * 通用函数：对页面上所有“分类”复选框区域进行重新排序。
@@ -2084,13 +2084,13 @@
                     });
                 } else if (currentEngineId === 'groq_ai') {
                     const modelMapping = {
+						'moonshotai/kimi-k2-instruct': 'Kimi K2',
                         'meta-llama/llama-4-maverick-17b-128e-instruct': 'Llama 4',
-                        'moonshotai/kimi-k2-instruct': 'Kimi K2',
                         'deepseek-r1-distill-llama-70b': 'DeepSeek 70B',
                         'openai/gpt-oss-120b': 'GPT-OSS 120B'
                     };
                     const modelOrder = Object.keys(modelMapping);
-                    const currentModelId = GM_getValue('groq_model', 'meta-llama/llama-4-maverick-17b-128e-instruct');
+                    const currentModelId = GM_getValue('groq_model', 'moonshotai/kimi-k2-instruct');
                     const currentModelIndex = modelOrder.indexOf(currentModelId);
                     const nextModelIndex = (currentModelIndex + 1) % modelOrder.length;
                     const nextModelId = modelOrder[nextModelIndex];
@@ -2280,13 +2280,23 @@
             }
         })();
         (function() {
-            const oldApiKey = GM_getValue('chatglm_api_key', null);
-            if (oldApiKey) {
-                console.log('AO3 汉化插件：检测到旧版 ChatGLM API Key，正在迁移至 Zhipu AI...');
-                GM_setValue('zhipu_ai_api_key', oldApiKey);
+            const oldChatglmKey = GM_getValue('chatglm_api_key', null);
+            if (oldChatglmKey) {
+                console.log('AO3 汉化插件：检测到旧版 API Key 数据，正在迁移至新版...');
+                GM_setValue('zhipu_api_key', oldChatglmKey);
                 GM_deleteValue('chatglm_api_key');
                 console.log('AO3 汉化插件：API Key 迁移成功！');
                 GM_notification('您的 ChatGLM API Key 已成功迁移为 Zhipu AI API Key！', 'AO3 汉化插件');
+            } 
+            else {
+                const oldZhipuAiKey = GM_getValue('zhipu_ai_api_key', null);
+                if (oldZhipuAiKey) {
+                    console.log('AO3 汉化插件：检测到旧版 API Key 数据，正在迁移至新版...');
+                    GM_setValue('zhipu_api_key', oldZhipuAiKey);
+                    GM_deleteValue('zhipu_ai_api_key');
+                    console.log('AO3 汉化插件：API Key 迁移成功！');
+                    GM_notification('您的 Zhipu AI API Key 已成功更新至最新标准！', 'AO3 汉化插件');
+                }
             }
         })();
         checkForGlossaryUpdates(false);
