@@ -1,6 +1,6 @@
 维护者：V-Lipset
-版本号：1.0.1
-更新时间：2025-08-08
+版本号：1.0.2
+更新时间：2025-08-09
 
 词条
 
@@ -8,6 +8,7 @@
 Chief：局长
 000：000
 Adela：阿黛拉
+Augustus：奥古斯特
 Angell：安吉尔
 Anne：安
 Ariel：艾瑞尔
@@ -113,6 +114,7 @@ Shalom：瑟琳
 Shawn：肖恩
 Shin：源津
 Shrooma：舒鲁玛
+Siglinde：希格林德
 Stargazer：观星者
 Sumire：堇
 Summer：夏音
@@ -140,12 +142,36 @@ Zoya：卓娅
 
 // 组织和地点
 Dis City：狄斯城
+Syndican：辛迪加
+Salva Hospital：彼岸诊所
+Minos Bureau of Crisis Control：米诺斯危机管理局
+Ninth Agency：第九机关
+9th Agency：第九机关
 Quinn：奎恩
 Eastern：东洲
 Paradeisos：上庭
+Legion：军团
 
 
 // 概念
 Sinner：禁闭者
-Sun Crow：金乌
+Sinners：禁闭者们
+Shepherd：牧羊人
 Shackles：枷锁
+Hypercube：异方晶
+Schorl：黑石英
+Sun Crow：金乌
+
+Endura：坚韧
+Fury：狂暴
+Umbra：诡秘
+Reticle：精准
+ Arcane：异能
+ Catalyst：启迪
+Tendency：特化
+
+Adjutant：副官
+Franc：芙兰克
+Cavendish：卡文迪许
+Mad Shear：剪疯子
+Mentor：业师
