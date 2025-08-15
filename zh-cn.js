@@ -1,7 +1,7 @@
 /**
  name         AO3 汉化插件 - 词库
  namespace    https://github.com/V-Lipset/ao3-chinese
- version      1.3.2-2025-08-08
+ version      1.4.0-2025-08-15
  description  AO3 汉化插件的词库文件
  author       V-Lipset
  license      GPL-3.0
@@ -22,7 +22,7 @@ const I18N = {
             'works_show': ['.stats .hits', '.stats .kudos'],
         },
         ignoreSelectorPage: {
-            '*': ['script', 'style', 'noscript', 'iframe', 'canvas', 'video', 'audio', 'img', 'svg', 'pre', 'code', '.userstuff.workskin', '.workskin', 'div.autocomplete.dropdown ul', '.freeforms', '[data-translated-by-custom-function]'],
+            '*': ['script', 'style', 'noscript', 'iframe', 'canvas', 'video', 'audio', 'img', 'svg', 'pre', 'code', '.userstuff.workskin', '.workskin', 'div.autocomplete.dropdown ul', 'dd.freeform.tags', '[data-translated-by-custom-function]'],
             'works_show': ['.dropdown.actions-menu ul', '.userstuff'],
 			'works_chapters_show': ['.userstuff'],
             'admin_posts_show': ['.userstuff'],
@@ -223,6 +223,7 @@ const I18N = {
                 'Series Subscriptions': '系列订阅',
                 'User Subscriptions': '用户订阅',
                 'Work Subscriptions': '作品订阅',
+                    'Unsubscribe': '取消订阅',
                 'Delete All Subscriptions': '删除所有订阅',
                 'Sign-ups': '报名挑战',
                 'Assignments': '任务中心',
@@ -388,24 +389,62 @@ const I18N = {
                 'Collapse Booksmarks List': '收起书签列表',
 
                 // 作品
-                'Series': '系列',
-                'Language:': '语言:',
-                'Words:': '字数:',
-                'Chapters:': '章节:',
-                'Comments:': '评论:',
-                'Kudos:': '点赞:',
-                'Bookmarks:': '书签:',
-                'Hits:': '点击:',
+                    'Rating:': '分级:',
+                    'Archive Warning:': 'Archive 预警:',
+				'Archive Warnings:': 'Archive 预警:',
+                    'Archive Warning': 'Archive 预警',
+                'Archive Warnings': 'Archive 预警',
+                    'Category:': '分类:',
+                    'Categories:': '分类:',
+                    'Fandom:': '同人圈:',
+				'Fandoms:': '同人圈:',
+                    'Relationship:': '关系:',
+                    'Relationships:': '关系:',
+                    'Character:': '角色:',
+                    'Characters:': '角色:',
+				'Additional Tag:': '附加标签:',
+                    'Additional Tags:': '附加标签:',
+                    'Language:': '语言:',
+                    'Series': '系列',
+                    'Series:': '系列:',
+                    'Stats:': '统计:',
+                    'Published:': '发布于:',
+                    'Completed:': '完结于:',
+                    'Updated:': '更新于:',
+                    'Words:': '字数:',
+                    'Chapters:': '章节:',
+                    'Comments:': '评论:',
+                    'Kudos:': '点赞:',
+                    'Bookmarks:': '书签:',
+                    'Hits:': '点击:',
+                    'Complete?': '已完结？',
+                    'Word Count:': '字数:',
+                    'Date Updated:': '更新日期:',
                 'Post': '发布',
                 'New Work': '新作品',
+                    'Edit Work': '编辑作品',
                 'Import Work': '导入作品',
+                    'From Draft': '从草稿',
                 'Edit': '编辑',
+                    'Edit Tags': '编辑标签',
+                    'Add Chapter': '添加章节',
+                    'Post Draft': '发布草稿',
+                    'Delete Draft': '删除草稿',
+                    'Post Chapter': '发布章节',
+                    'Edit Chapter': '编辑章节',
+                    'Delete Chapter': '删除章节',
+                    'Manage Chapters': '管理章节',
+                    'Drag chapters to change their order.': '拖动章节以更改顺序。',
+                    'Enter new chapter numbers.': '输入新的章节编号。',
+                    'Update Positions': '更新顺序',
                 'Update': '更新',
                 'Delete': '删除',
                 'Cancel': '取消',
                 'Save': '保存',
                 'Saved': '已保存',
                 'Submit': '提交',
+                    'Orphan Work': '匿名化作品',
+                    'Orphan Works': '匿名化作品',
                 'Filters': '筛选器',
                 'Sort By': '排序方式',
                 'Random': '随机',
@@ -413,6 +452,7 @@ const I18N = {
                 'Date Updated': '更新日期',
                 'Word Count': '字数统计',
                 'Summary': '简介',
+				'Summary:': '简介:',
                 'Notes': '注释',
                 'Work Text': '作品正文',
                 'Chapter Index': '章节索引',
@@ -423,9 +463,6 @@ const I18N = {
                 'kudos': ' 个赞',
                 'bookmark': ' 条书签',
                 'comment': ' 条评论',
-                'Published:': '发布于:',
-                'Completed:': '完结于:',
-                'Updated:': '更新于:',
                 '← Previous': '← 上一页',
                 'Next →': '下一页 →',
                 'All fields are required. Your email address will not be published.': '所有字段均为必填。您的电子邮箱地址不会被公开。',
@@ -437,6 +474,9 @@ const I18N = {
                 'Show Creator\'s Style': '显示创作者样式',
                 'top level comment': '主评论',
                 'Share Work': '分享作品',
+                    'Restore From Last Unposted Draft?': '从上次未发布的草稿恢复？',
+                    'Delete Work': '删除作品',
+                    'Save As Draft': '存为草稿',
 
                 // 合集
                 'Collections in the Archive of Our Own': ' AO3 中的合集',
@@ -500,7 +540,7 @@ const I18N = {
                 'Add to collections': '添加到合集',
                 'Private bookmark': '私人书签',
                 'Create': '创建',
-                'Bookmark was successfully deleted.': '书签已成功删除',
+                'Bookmark was successfully deleted.': '书签已成功删除。',
                 'Add Bookmark to collections': '将书签添加到合集',
                 'Collection name(s):': '合集名称：',
                 'collection name': '合集名称',
@@ -509,6 +549,7 @@ const I18N = {
                 'Bookmark was successfully updated.': '书签已成功更新。',
                 'Share Bookmark': '分享书签',
                 'Close': '关闭',
+				'Show': '展示',
                 'Bookmark Collections:': '书签合集:',
 
                 // 系列
@@ -518,7 +559,6 @@ const I18N = {
                 'Series Updated:': '系列更新于:',
                 'Description:': '描述:',
                 'Notes:': '注释:',
-                'Stats:': '统计:',
                 'Works:': '作品:',
                 'Complete:': '完结:',
 
@@ -578,6 +618,20 @@ const I18N = {
                 'You are already signed in.': '您已登录。',
                 'There are no works or bookmarks under this name yet.': '此名称下尚无作品或书签。',
                 'Sorry, you don\'t have permission to access the page you were trying to reach. Please log in.': '抱歉，您无权访问目标页面。请先登录。',
+                    'Are you sure you want to delete this draft?': '您确定要删除此草稿吗？',
+                    'Work was successfully updated.': '作品已成功更新。',
+                    'The work was not updated.': '作品没有更新。',
+                    'Your changes have not been saved. Please post your work or save as draft if you want to keep them.': '您的更改尚未保存。如果您想保留，请发布作品或将其保存为草稿。',
+                    'Work was successfully posted. It should appear in work listings within the next few minutes.': '作品已成功发布。它将在接下来的几分钟内出现在作品列表中。',
+                    'Are you sure you want to delete this work? This will destroy all comments and kudos on this work as well and CANNOT BE UNDONE!': '您确定要删除这篇作品吗？此操作将一并删除该作品收到的所有评论和点赞，且无法撤销！',
+                    'Chapter has been posted!': '章节已成功发布！',
+                    'Chapter was successfully updated.': '章节已成功更新。',
+                    'Are you sure?': '你确定吗？',
+                    'The chapter was successfully deleted.': '已成功删除此章节。',
+                    'Chapter order has been successfully updated.': '章节顺序已成功更新。',
+                    'This is a draft chapter in a posted work. It will be kept unless the work is deleted.': '这是已发布作品中的一篇草稿章节。除非作品被删除，否则该草稿将一直保留。',
+                    'This chapter is a draft and hasn\'t been posted yet!': '本章节为草稿，尚未发布！',
+				'Are you sure you want to delete this bookmark?': '您确定要删除此书签吗？',
             },
             'innerHTML_regexp': [
 
@@ -804,6 +858,66 @@ const I18N = {
                     /^\s*You have muted some users on the Archive\.\s*Some items may not be shown, and any counts may be inaccurate\.\s*You can mute or unmute users on\s*<a href="(\/users\/[^\/]+\/muted\/users)">your Muted Users page<\/a>\s*[.。]?\s*$/s,
                     '您已在 Archive 上静音了部分用户。部分内容可能因此不予显示，相关计数也可能并不准确。您可在 <a href="$1">已静音用户</a> 页面静音或取消静音用户。'
                 ],
+                    [
+                        'p.caution.notice',
+                        /^\s*This draft will be <strong>scheduled for deletion<\/strong> on\s*(<abbr class="day".*?<\/span>)\s*\.\s*$/s,
+                        '此草稿将于 <span>$1</span> <strong>预定删除</strong>。'
+                    ],
+                    [
+                        'p:has(a[href="/content"]):has(a[href="/tos_faq#content_faq"])',
+                        /All\s+works\s+you\s+post\s+on\s+AO3\s+must\s+comply\s+with\s+our\s+<a\s+href="\/content"[^>]*>(?:Content Policy|内容政策)<\/a>\.\s*For\s+more\s+information,\s+please\s+refer\s+to\s+our\s+<a\s+href="\/tos_faq#content_faq"[^>]*>(?:Terms of Service FAQ|服务条款常见问题)<\/a>[\.。]?/s,
+                        '您在 AO3 发布的所有作品均必须遵守我们的 <a href="/content">内容政策</a> 。更多信息请参阅我们的 <a href="/tos_faq#content_faq">服务条款常见问题</a> 。'
+                    ],
+                    [
+                        'p.notice',
+                        /^\s*This work is a draft and has not been posted\. The draft will be <strong>scheduled for deletion<\/strong> on\s*(<abbr class="day".*?<\/span>)\s*\.\s*$/s,
+                        '此作品是尚未发布的草稿。将于 <span>$1</span> <strong>预定删除</strong>。'
+                    ],
+                    [
+                        'p.notice',
+                        /^\s*Sorry, this work doesn't allow comments\.\s*$/s,
+                        '抱歉，此作品不允许评论。'
+                    ],
+                    [
+                        'h4.heading.byline',
+                        /^\s*Chapter by (<a\s+rel="author".*?<\/a>)\s*$/s,
+                        '章节作者：$1'
+                    ],
+                    [
+                        'div.flash.notice',
+                        /^Draft was successfully created\. It will be <strong>scheduled for deletion<\/strong>\s+on\s+(.*)\.$/s,
+                        '草稿已成功创建。它将于 $1 <strong>预定删除</strong>。'
+                    ],
+                    [
+                        'p',
+                        /^\s*This tag belongs to the Character Category\.\s*$/,
+                        '此标签属于“角色”分类。'
+                    ],
+                    [
+                        'p',
+                        /^\s*This tag has not been marked common and can't be filtered on \(yet\)\.\s*$/,
+                        '此标签尚未被标记为常用，（目前）无法用于筛选。'
+                    ],
+                    [
+                        'h3.heading',
+                        /^\s*Works which have used it as a tag:\s*$/,
+                        '使用此标签的作品：'
+                    ],
+				[
+					'div.flash.error',
+					/^We couldn't add your submission to the following collections: (.*?) does not exist\.$/s,
+					'我们无法将您的提交添加到以下合集：$1 不存在。'
+				],
+				[
+					'h2.heading',
+					/^\s*Editing bookmark for (<a href="\/works\/\d+">.*?<\/a>)\s*$/s,
+					'编辑书签：$1'
+				],
+				[
+					'div.flash.notice',
+					/^\s*Bookmark was successfully updated\.\s+Added to collection\(s\):\s*(.*?)\.\s*$/s,
+					'书签已成功更新。已添加到合集：$1。'
+				]
             ],
             'regexp': [
 
@@ -848,6 +962,7 @@ const I18N = {
 
                 [/^([\d,]+)\s+Bookmarks?$/, '$1 条书签'],
                 [/The creator's summary is added automatically\.\s*Plain text with limited HTML/s, '创作者的简介会自动添加。纯文本，支持有限 HTML'],
+                    [/^Your work (.*) was deleted\.$/, '您的作品 “$1” 已被删除。'],
             ],
             'selector': [
                 ['#tos_prompt button[name=commit]', '我同意并已阅读服务条款'],
@@ -857,6 +972,7 @@ const I18N = {
                 ['.post.comment .submit input[type=submit]', '评论'],
                 ['form#new_comment .actions input[name=commit]', '评论'],
                 ['#kudo_submit', '点赞'],
+                    [/^Chapter (\d+)$/, '第 $1 章'],
             ]
         },
 
@@ -966,6 +1082,14 @@ const I18N = {
             'regexp': [],
             'selector': []
         },
+            'works_edit': {
+            'static': {
+                    'Edit Work': '编辑作品',
+                    'Add Chapter': '添加章节',
+                    'Edit Chapter:': '编辑章节:',
+                },
+                'regexp': [], 'selector': [], 'innerHTML_regexp': []
+        },
         'works_new': {
             'static': {
                 'Post New Work': '发布新作品',
@@ -1007,6 +1131,13 @@ const I18N = {
                 'Preview': '预览',
                 'Brevity is the soul of wit, but your content does have to be at least 10 characters long.': '简洁乃智慧之魂，但您的内容长度必须至少 10 个字符。',
                 'Sorry! We couldn\'t save this work because:': '抱歉！我们无法保存此作品，因为：', 'Language cannot be blank.': '语言不能为空。', 'Please fill in at least one fandom.': '请至少填写一个同人圈。', 'Please select at least one warning.': '请至少选择一个预警。',
+                    'For a work in the Archive, only the URL is required.': '对于 Archive 站内的作品，仅需填写 URL。',
+                    'This is a translation': '这是一个译本',
+                    'Choose one of your existing series:': '选择一个您已有的系列：',
+                    'Please select': '请选择',
+                    'Or create and use a new one:': '或创建并使用一个新系列：',
+                    'Chapter Title:': '章节标题：',
+                    'Set publication date': '设置发布日期',
             },
             'innerHTML_regexp': [
                 ['p.character_counter', /(<span[^>]*>\d+<\/span>)\s*characters left/s, '剩余 $1 字符'],
@@ -1019,7 +1150,8 @@ const I18N = {
             ],
             'regexp': [],
             'selector': [
-                ['dt.permissions.comments', '谁可以评论此作品']
+                ['dt.permissions.comments', '谁可以评论此作品'],
+                    ['#chapters-options label[for="work_wip_length"]', '第 1 章 / 共']
             ]
         },
         'works_import': {
@@ -1085,12 +1217,89 @@ const I18N = {
                 ['dt.permissions.comments', '谁可以评论此作品']
             ]
         },
-        'works_show_multiple': {
-            'static': {
-                'Edit Multiple Works': '编辑多个作品',
-                'You have no works or drafts to edit.': '您没有可编辑的作品或草稿。'
-            }
-        },
+            'chapters_new': {
+                'static': {
+                    'Post New Chapter': '发布新章节',
+                    'Name, Order and Date': '名称、顺序和日期',
+                    'Chapter Title': '章节标题',
+                    'Chapter Number': '章节编号',
+                    'Chapter Publication Date': '章节发布日期',
+                    'Chapter Preface': '章节前言',
+                    'Chapter Summary': '章节简介',
+                    'Chapter Notes': '章节注释',
+                    'End Notes': '尾注', // 补上这个之前遗漏的词条
+                    'Chapter Text*': '章节正文*',
+                    'Post Chapter': '发布章节',
+                    'Warning: Unchecking this box will delete the existing beginning note.': '警告：取消勾选此框将删除已有的开头注释。',
+                    'Warning: Unchecking this box will delete the existing end note.': '警告：取消勾选此框将删除已有的结尾注释。'
+                },
+                'selector': [
+                    ['label[for="chapter_wip_length"]', '共']
+                ]
+            },
+            'works_edit_tags': {
+                'static': {
+                    'Post Work': '发布作品',
+                    'Update': '更新'
+                },
+                'innerHTML_regexp': [
+                    [
+                        'h2.heading',
+                        /^\s*Edit Work Tags for (.*)\s*$/s,
+                        '编辑作品标签：$1 '
+                    ]
+                ],
+                'selector': []
+            },
+            'chapters_edit': {
+                'static': {}
+            },
+            'orphans_new': {
+                'static': {
+                    'Take my pseud off as well': '同时移除我的笔名',
+                    'Leave a copy of my pseud on': '保留我的笔名副本',
+                    'Read More About The Orphaning Process': '阅读更多关于匿名流程的信息',
+                    'Yes, I\'m sure': '是的，我确定'
+                },
+                'innerHTML_regexp': [
+                    [
+                        'p.caution.notice',
+                        /Orphaning will\s*<strong>permanently<\/strong>\s*remove all identifying data from the following work\(s\), their chapters, associated series, and any feedback replies you may have left on them\./s,
+                        '匿名化操作将<strong>永久</strong>移除以下作品、其章节、关联系列以及您可能留下的任何反馈回复中的所有身份识别信息。'
+                    ],
+                    [
+                        'p.caution.notice',
+                        /Orphaning a work removes it from your account and re-attaches it to the specially created orphan_account\. Please note that this is\s*<strong>permanent and irreversible\.<\/strong>\s*You are giving up control over the work,\s*<strong>including the ability to edit or delete it\.<\/strong>/s,
+                        '匿名化作品会将其从您的账户中移除，并重新关联至专门创建的 orphan_account（匿名帐户）。请注意，此操作是<strong>永久且不可逆的。</strong>您将放弃对该作品的控制权，<strong>包括编辑或删除它的能力。</strong>'
+                    ],
+                    [
+                        'p.caution.notice',
+                        /Are you\s*<strong>really<\/strong>\s*sure you want to do this\?/s,
+                        '您<strong>真的</strong>确定要这样做吗？'
+                    ]
+                ],
+                'selector': []
+            },
+            'works_show_multiple': {
+                'static': {
+                    'Edit Multiple Works': '编辑多个作品',
+                    'You have no works or drafts to edit.': '您没有可编辑的作品或草稿。',
+                    'All': '全选',
+                    'None': '取消勾选',
+                    'Actions': '操作',
+                    'Orphan': '匿名化'
+                },
+                'innerHTML_regexp': [
+                    [
+                        'fieldset.fandom.listbox > legend',
+                        /^Select (.*) works$/s,
+                        '选择 $1 的作品'
+                    ]
+                ],
+                'regexp': [
+                    [/\(Draft\)$/, '（草稿）']
+                ]
+            },
         'users_invitations': {
             'flexible': {
                 'Unsent': '未发送',
@@ -1133,7 +1342,6 @@ const I18N = {
                 'Plain text with limited HTML': '纯文本，支持有限 HTML',
                 'Update': '更新',
                 'Editing pseud': '编辑笔名',
-                'Show': '展示',
                 'Back To Pseuds': '返回笔名列表',
                 'Name': '名称',
                 'Make this name default': '将此笔名设为默认',
@@ -1394,18 +1602,7 @@ const I18N = {
         },
 
         'works_index': {
-            'static': {
-                'Fandom:': '同人圈:',
-                'Rating:': '分级:',
-                'Archive Warning:': 'Archive 预警:',
-                'Category:': '分类:',
-                'Complete?': '已完结？',
-                'Word Count:': '字数:',
-                'Date Updated:': '更新日期:',
-                'Relationship:': '关系:',
-                'Character:': '角色:',
-                'Additional Tags:': '其她标签:',
-            },
+            'static': {},
             'innerHTML_regexp': [],
             'regexp': [],
             'selector': []
@@ -1901,7 +2098,6 @@ const I18N = {
                 'Categories': '分类',
                 'Relationships': '关系',
                 'Characters': '角色',
-                'Notes': '注释',
                 'Your tags': '您的标签',
                 'Add to collections': '添加到合集',
                 'Private bookmark': '私人书签',
@@ -2028,8 +2224,6 @@ const I18N = {
         },
         'works_chapters_show': {
             'static': {
-                'Archive Warning': 'Archive 预警',
-                'Archive Warnings': 'Archive 预警',
                 'Chapter by Chapter': '逐章阅读',
                 'Mark for Later': '稍后阅读',
                 'Mark as Read': '标记为已读',
@@ -2063,17 +2257,6 @@ const I18N = {
                 'Works inspired by this one:': '衍生作品：',
             },
             'innerHTML_regexp': [
-                ['dt.rating.tags', /^(\s*)Rating:(\s*)$/, '$1分级:$2'],
-                ['dt.category.tags', /^(\s*)Category:(\s*)$/, '$1类别:$2'],
-                ['dt.category.tags', /^(\s*)Categories:(\s*)$/s, '$1类别:$2'],
-                ['dt.fandom.tags', /^(\s*)Fandoms?:(\s*)$/, '$1同人圈:$2'],
-                ['dt.series', /^(\s*)Series:(\s*)$/s, '$1系列:$2'],
-                ['dt.relationship.tags', /^(\s*)Relationships?:(\s*)$/, '$1关系:$2'],
-                ['dt.character.tags', /^(\s*)Characters?:(\s*)$/, '$1角色:$2'],
-                ['dt.freeform.tags', /^(\s*)Additional Tags?:(\s*)$/s, '$1附加标签:$2'],
-                ['dt.stats', /^(\s*)Stats:(\s*)$/, '$1统计:$2'],
-                ['div.summary > h3.heading', /^(\s*)Summary:(\s*)$/, '$1简介：$2'],
-                ['div.notes > h3.heading', /^(\s*)Notes:(\s*)$/, '$1注释：$2'],
                 [
                     'div.flash.notice',
                     /^\s*This work was added to your <a href="([^"]*)">Marked for Later list<\/a>\.\s*$/s,
@@ -4925,6 +5108,33 @@ function translateOptionalTagsHelp() {
     }
 }
 
+    /**
+     * 专门用于翻译“章节标题”帮助弹窗。
+     */
+    function translateChapterTitleHelpModal() {
+        const container = document.querySelector('#modal div.content.userstuff');
+        const footer = container?.nextElementSibling;
+        const footerTitle = footer?.querySelector('span.title');
+
+        if (!footerTitle || footerTitle.textContent !== 'Chapter title') {
+            return;
+        }
+
+        if (container) {
+            container.innerHTML = `
+                <h4>章节标题</h4>
+                <p>您可以为章节添加标题，但这不是必填项。</p>
+            `;
+            container.setAttribute('data-translated-by-custom-function', 'true');
+        }
+
+        footerTitle.textContent = '章节标题';
+        const closeButton = footer.querySelector('a.modal-closer');
+        if (closeButton) {
+            closeButton.textContent = '关闭';
+        }
+    }
+
 /**
  * 专用翻译函数：翻译“关于 OTW”页面
  */
@@ -5060,19 +5270,15 @@ function translateTOSPrompt() {
     promptDiv.setAttribute('data-translated-by-custom-function', 'true');
 }
 
-/**
- * 各种value按钮
- */
-function translateActionButtons() {
-    const postButton = document.querySelector('input[name="post_button"]');
-    if (postButton) {
-        if (postButton.value === 'Post') {
-            postButton.value = '发布';
-        }
-        if (postButton.getAttribute('data-disable-with') === 'Please wait...') {
-            postButton.setAttribute('data-disable-with', '请稍等…');
-        }
-    }
+    /**
+     * 翻译各种操作按钮
+     */
+    function translateActionButtons() {
+        // Please wait 状态按钮
+        const buttonsToTranslateDisableText = document.querySelectorAll('[data-disable-with="Please wait..."]');
+        buttonsToTranslateDisableText.forEach(button => {
+            button.setAttribute('data-disable-with', '请稍等…');
+        });
     // 订阅/取消订阅按钮
     const subscribeButton = document.querySelector('input[name="commit"][value="Subscribe"]');
     if (subscribeButton) {
@@ -5093,25 +5299,24 @@ function translateActionButtons() {
     if (unfavoriteTagButton) {
         unfavoriteTagButton.value = '取消收藏';
     }
-
-    const ajaxForms = document.querySelectorAll('form.ajax-create-destroy');
-    ajaxForms.forEach(form => {
-        // 订阅功能
-        if (form.getAttribute('data-create-value') === 'Subscribe') {
-            form.setAttribute('data-create-value', '订阅');
-        }
-        if (form.getAttribute('data-destroy-value') === 'Unsubscribe') {
-            form.setAttribute('data-destroy-value', '取消订阅');
-        }
-        // 收藏标签功能
-        if (form.getAttribute('data-create-value') === 'Favorite Tag') {
-            form.setAttribute('data-create-value', '收藏标签');
-        }
-        if (form.getAttribute('data-destroy-value') === 'Unfavorite Tag') {
-            form.setAttribute('data-destroy-value', '取消收藏');
-        }
-    });
-}
+        const ajaxForms = document.querySelectorAll('form.ajax-create-destroy');
+        ajaxForms.forEach(form => {
+            // 订阅功能
+            if (form.getAttribute('data-create-value') === 'Subscribe') {
+                form.setAttribute('data-create-value', '订阅');
+            }
+            if (form.getAttribute('data-destroy-value') === 'Unsubscribe') {
+                form.setAttribute('data-destroy-value', '取消订阅');
+            }
+            // 收藏标签功能
+            if (form.getAttribute('data-create-value') === 'Favorite Tag') {
+                form.setAttribute('data-create-value', '收藏标签');
+            }
+            if (form.getAttribute('data-destroy-value') === 'Unfavorite Tag') {
+                form.setAttribute('data-destroy-value', '取消收藏');
+            }
+        });
+    }
 
 /**
  * 专用于翻译排序按钮（↑ Date, ↓ Fandom）
@@ -5343,30 +5548,14 @@ function translateKudosSection() {
 	const translateParagraphContent = (pElement) => {
 		let html = pElement.innerHTML;
 		const originalHtml = html;
-		html = html.replace(
-			/(<a[^>]*>)([\d,]+)\s+more\s+users(<\/a>)/g,
-			'$1$2 位用户$3'
-		);
-		html = html.replace(
-			/\s*as well as\s+([\d,]+)\s+guest(s)?\s+left kudos on this work!/g,
-			' ，以及 $1 位访客点赞了此作品！'
-		);
-		html = html.replace(
-			/^([\d,]+)\s+guest(s)?\s+left kudos on this work!/g,
-			'$1 位访客点赞了此作品！'
-		);
-		html = html.replace(
-			/left kudos on this work!/g,
-			'点赞了此作品！'
-		);
-		html = html.replace(
-			/,\s*and\s*(<a [^>]+>.*?<\/a>)/g,
-			'，和 $1'
-		);
-		html = html.replace(
-			/(<span id="kudos_more_connector">), and (<\/span>)/g,
-			'$1，和 $2'
-		);
+            html = html.replace(/(<a[^>]*>)([\d,]+)\s+more\s+users(<\/a>)/g, '$1$2 位用户$3');
+            html = html.replace(/([\d,]+)\s+guest(s)?/g, '$1 位访客');
+            html = html.replace(/\s+as well as\s+/g, '，以及 ');
+            html = html.replace(/(<span id="kudos_more_connector">), and (<\/span>)/g, '$1，和 $2');
+            html = html.replace(/\s+and\s+/g, ' 和 ');
+            html = html.replace(/, /g, '，');
+            html = html.replace(/\s+left kudos on this work!/g, '点赞了此作品！');
+
 		if (html !== originalHtml) {
 			pElement.innerHTML = html;
 		}
