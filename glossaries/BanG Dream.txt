@@ -1,164 +1,100 @@
 维护者：V-Lipset
-版本号：1.0.1
-更新时间：2025-08-06
+版本号：1.0.2
+更新时间：2025-08-15
+
 
 词条
 
-
 // Poppin'Party
-Toyama：户山
-Kasumi：香澄
-Hanazono：花园
-Tae：多惠
-Ushigome：牛込
-Rimi：里美
-Yamabuki：山吹
-Saaya：沙绫
-Ichigaya：市谷
-Arisa：有咲
+Toyama Kasumi = 户山 香澄
+Hanazono Tae = 花园 多惠
+Ushigome Rimi = 牛込 里美
+Yamabuki Saaya = 山吹 沙绫
+Ichigaya Arisa = 市谷 有咲
 
 // Roselia
-Minato：凑
-Yukina：友希那
-Hikawa：冰川
-Sayo：纱夜
-Imai：今井
-Lisa：莉莎
-Udagawa：宇田川
-Ako：亚子
-Shirokane：白金
-Rinko：燐子
+Minato Yukina = 凑 友希那
+Hikawa Sayo = 冰川 纱夜
+Imai Lisa = 今井 莉莎
+Udagawa Ako = 宇田川 亚子
+Shirokane Rinko = 白金 燐子
 
 // Afterglow
-Mitake：美竹
-Ran：兰
-Aoba：青叶
-Moca：摩卡
-Uehara：上原
-Himari：绯玛丽
-Udagawa：宇田川
-Tomoe：巴
-Hazawa：羽泽
-Tsugumi：鸫
+Mitake Ran = 美竹 兰
+Aoba Moca = 青叶 摩卡
+Uehara Himari = 上原 绯玛丽
+Udagawa Tomoe = 宇田川 巴
+Hazawa Tsugumi = 羽泽 鸫
 
 // Pastel Palettes
-Maruyama：丸山
-Aya：彩
-Hikawa：冰川
-Hina：日菜
-Shirasagi：白鹭
-Chisato：千圣
-Yamato：大和
-Maya：麻弥
-Wakamiya：若宫
-Eve：伊芙
+Maruyama Aya = 丸山 彩
+Hikawa Hina = 冰川 日菜
+Shirasagi Chisato = 白鹭 千圣
+Yamato Maya = 大和 麻弥
+Wakamiya Eve = 若宫 伊芙
 
 // Hello, Happy World!
-Tsurumaki：弦卷
-Kokoro：心
-Seta：濑田
-Kaoru：薰
-Kitazawa：北泽
-Hagumi：育美
-Matsubara：松原
-Kanon：花音
-Okusawa：奥泽
-Misaki：美咲
-Michelle：米歇尔
+Tsurumaki Kokoro = 弦卷 心
+Seta Kaoru = 濑田 薰
+Kitazawa Hagumi = 北泽 育美
+Matsubara Kanon = 松原 花音
+Okusawa Misaki = 奥泽 美咲
+Michelle = 米歇尔
 
 // Raise A Suilen
-Wakana：和奏
-Rei：瑞依
-Asahi：朝日
-Rokka：六花
-Satou：佐藤
-Masuki：增姬
-Nyūbara：鳰原
-Reona：玲於奈
-Tamade：珠手
-Chiyu：知优
+Wakana Rei = 和奏 瑞依
+Asahi Rokka = 朝日 六花
+Satou Masuki = 佐藤 增姬
+Nyūbara Reona = 鳰原 玲於奈
+Tamade Chiyu = 珠手 知优
 
 // Morfonica
-Kurata：仓田
-Mashiro：真白
-Kirigaya：桐谷
-Touko：透子
-Hiromachi：广町
-Nanami：七深
-Futaba：二叶
-Tsukushi：筑紫
-Yashio：八潮
-Rui：瑠唯
+Kurata Mashiro = 仓田 真白
+Kirigaya Touko = 桐谷 透子
+Hiromachi Nanami = 广町 七深
+Futaba Tsukushi = 二叶 筑紫
+Yashio Rui = 八潮 瑠唯
 
 // MyGO!!!!!
-Takamatsu：高松
-Tomori：灯
-Chihaya：千早
-Anon：爱音
-Kaname：要
-Raana：乐奈
-Nagasaki：长崎
-Soyo：素世
-Shiina：椎名
-Taki：立希
-Rikki：立希
+Takamatsu Tomori = 高松 灯
+Chihaya Anon = 千早 爱音
+Kaname Raana = 要 乐奈
+Nagasaki Soyo = 长崎 素世
+Shiina Taki = 椎名 立希
 
 // Ave Mujica
-Misumi：三角
-Uika：初华
-Hatsune：初音
-Wakaba：若叶
-Mutsumi：睦
-Yahata：八幡
-Umiri：海铃
-Yuutenji：祐天寺
-Nyamu：若麦
-Togawa：丰川
-Sakiko：祥子
-Saki：祥子
+Misumi Uika = 三角 初华
+Misumi Hatsune = 三角 初音
+Wakaba Mutsumi = 若叶 睦
+Yahata Umiri = 八幡 海铃
+Yuutenji Nyamu = 祐天寺 若麦
+Togawa Sakiko = 丰川 祥子
 
 // Mugendai Mewtype
-Nakamachi：仲町
-Arale：阿拉蕾
-Miyanaga：宫永
-Nonoka：野乃花
-Minetsuki：峰月
-Ritsu：律
-Fuji：藤
-Miyako：都子
-Sengoku：千石
-Yuno：由乃
+Nakamachi Arale = 仲町 阿拉蕾
+Miyanaga Nonoka = 宫永 野乃花
+Minetsuki Ritsu = 峰月 律
+Fuji Miyako = 藤 都子
+Sengoku Yuno = 千石 由乃
 
 // CHiSPA
-Umino：海野
-Natsuki：夏希
-Taiko：大湖
-Satomi：里实
-Mori：森
-Fumika：文华
-Kawabata：川端
-Mayu：真结
+Umino Natsuki = 海野 夏希
+Taiko Satomi = 大湖 里实
+Mori Fumika = 森 文华
+Kawabata Mayu = 川端 真结
 
 // Glitter Green
-Ushigome：牛込
-Yuri：百合
-Nijikki：二十骑
-Hinako：雏子
-Uzawa：鹈泽
-Rii：莉
-Wanibe：鳄部
-Nanana：七菜
+Ushigome Yuri = 牛込 百合
+Nijikki Hinako = 二十骑 雏子
+Uzawa Rii = 鹈泽 莉
+Wanibe Nanana = 鳄部 七菜
 
 // Sumimi
-Sumita：纯田
-Mana：真奈
+Sumita Mana = 纯田 真奈
 
-Tsuzuki：都筑
-Shifune：诗船
-Toyama：户山
-Asuka：明日香
-Tsukishima：月岛
-Marina：麻里奈
+Tsuzuki Shifune = 都筑 诗船
+Toyama Asuka = 户山 明日香
+Tsukishima Marina = 月岛 麻里奈
 
 // 地点
 Tsukinomori：月之森
@@ -166,3 +102,27 @@ Hanasakigawa：花咲川
 Haneoka：羽丘
 Girls' Academy：女子学园
 Girls' School：女子学园
+
+
+禁翻词条
+
+// 乐队
+Poppin'Party
+Roselia
+Afterglow
+Pastel Palettes
+Hello, Happy World
+Raise A Suilen
+Morfonica
+MyGO
+Ave Mujica
+Mugendai Mewtype
+CHiSPA
+Glitter Green
+Sumimi
+
+// 角色昵称
+Tomorin
+Soyorin
+Rikki
+Saki
