@@ -1,6 +1,6 @@
 维护者：V-Lipset
-版本号：1.0.3
-更新时间：2025-08-15
+版本号：1.0.4
+更新时间：2025-08-16
 
 
 词条
@@ -24,7 +24,8 @@ Christina：克里斯蒂娜
 Cinnabar：辰砂
 Coquelic：可可莉克
 Corso：卡斯洛
-Countess Chelsea：切尔西伯爵
+Countess：伯爵
+Chelsea：切尔西
 Crache：科希
 Demolia：德莫莉
 Demon：迪蒙
