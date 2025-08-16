@@ -2,7 +2,7 @@
 // @name         AO3 汉化插件
 // @namespace    https://github.com/V-Lipset/ao3-chinese
 // @description  中文化 AO3 界面，可调用 AI 实现简介、注释、评论以及全文翻译。
-// @version      1.4.0-2025-08-15
+// @version      1.4.1-2025-08-16
 // @author       V-Lipset
 // @license      GPL-3.0
 // @match        https://archiveofourown.org/*
@@ -1461,97 +1461,108 @@
         }
     }
 
+	/**
+     * 获取当前有效翻译引擎的名称
+     */
+	function getValidEngineName() {
+		const storedEngine = GM_getValue('transEngine');
+		const defaultEngine = 'together_ai';
+		if (storedEngine && CONFIG.TRANS_ENGINES[storedEngine]) {
+			return storedEngine;
+		}
+		return defaultEngine;
+	}
+
     /**
      * 处理标准 Bearer Token 认证的 API 请求
      */
-    async function _handleStandardApiRequest(engineConfig, paragraphs) {
-        const { name, url_api, method, responseIdentifier, getRequestData } = engineConfig;
-        const engineName = GM_getValue('transEngine');
+	async function _handleStandardApiRequest(engineConfig, paragraphs, engineName) {
+		const { name, url_api, method, responseIdentifier, getRequestData } = engineConfig;
 
-        let headers = { ...engineConfig.headers };
-        if (engineName === 'together_ai') {
-            headers['Authorization'] = `Bearer ${await getTogetherApiKey()}`;
-        } else {
-            const apiKey = GM_getValue(`${engineName.split('_')[0]}_api_key`);
-            if (!apiKey) throw new Error(`请先在菜单中设置 ${name} API Key`);
-            headers['Authorization'] = `Bearer ${apiKey}`;
-        }
+		let headers = { ...engineConfig.headers };
+		if (engineName === 'together_ai') {
+			headers['Authorization'] = `Bearer ${await getTogetherApiKey()}`;
+		} else {
+			const apiKey = GM_getValue(`${engineName.split('_')[0]}_api_key`);
+			if (!apiKey) throw new Error(`请先在菜单中设置 ${name} API Key`);
+			headers['Authorization'] = `Bearer ${apiKey}`;
+		}
 
-        const requestData = getRequestData(paragraphs);
-        
-        const res = await new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-                method, url: url_api, headers, data: JSON.stringify(requestData),
-                responseType: 'json', timeout: 45000,
-                onload: resolve,
-                onerror: () => reject(new Error('网络请求错误')),
-                ontimeout: () => reject(new Error('请求超时'))
-            });
-        });
-        
-        if (res.status !== 200) {
-            let errorMessage = res.statusText;
-            let responseData = res.response;
-            if (typeof responseData === 'string') try { responseData = JSON.parse(responseData); } catch (e) {}
-            
-            if (engineName === 'zhipu_ai' && getNestedProperty(responseData, 'error.code') === '1301') {
-                throw new Error('因含有敏感内容，请求被 Zhipu AI 安全策略阻止');
-            }
-            
-            if (responseData && typeof responseData === 'object' && responseData.error) {
-                errorMessage = responseData.error.message || JSON.stringify(responseData.error);
-            }
+		const requestData = getRequestData(paragraphs);
+		
+		const res = await new Promise((resolve, reject) => {
+			GM_xmlhttpRequest({
+				method, url: url_api, headers, data: JSON.stringify(requestData),
+				responseType: 'json', timeout: 45000,
+				onload: resolve,
+				onerror: () => reject(new Error('网络请求错误')),
+				ontimeout: () => reject(new Error('请求超时'))
+			});
+		});
+		
+		if (res.status !== 200) {
+			let errorMessage = res.statusText;
+			let responseData = res.response;
+			if (typeof responseData === 'string') try { responseData = JSON.parse(responseData); } catch (e) {}
+			
+			if (engineName === 'zhipu_ai' && getNestedProperty(responseData, 'error.code') === '1301') {
+				throw new Error('因含有敏感内容，请求被 Zhipu AI 安全策略阻止');
+			}
+			
+			if (responseData && typeof responseData === 'object' && responseData.error) {
+				errorMessage = responseData.error.message || JSON.stringify(responseData.error);
+			}
 
-            console.debug(`${name} 异常响应详情：`, { requestPayload: requestData, response: res.response, status: res.status });
-            if (res.status === 503 || res.status === 429 || res.status >= 500) {
-                const error = new Error(`（代码：${res.status}）：${errorMessage}`);
-                error.type = 'server_overloaded';
-                throw error;
-            }
-            throw new Error(`（代码：${res.status}）：${errorMessage}`);
-        }
-        
-        return getNestedProperty(res.response, responseIdentifier);
-    }
+			console.debug(`${name} 异常响应详情：`, { requestPayload: requestData, response: res.response, status: res.status });
+			if (res.status === 503 || res.status === 429 || res.status >= 500) {
+				const error = new Error(`（代码：${res.status}）：${errorMessage}`);
+				error.type = 'server_overloaded';
+				throw error;
+			}
+			throw new Error(`（代码：${res.status}）：${errorMessage}`);
+		}
+		
+		return getNestedProperty(res.response, responseIdentifier);
+	}
 
     /**
      * 远程翻译请求函数
      */
-    async function requestRemoteTranslation(paragraphs, { retryCount = 0, maxRetries = 5 } = {}) {
-        const engineName = GM_getValue('transEngine', 'together_ai');
-        const engineConfig = CONFIG.TRANS_ENGINES[engineName];
-        if (!engineConfig) {
-            throw new Error(`服务 ${engineName} 未配置`);
-        }
+	async function requestRemoteTranslation(paragraphs, { retryCount = 0, maxRetries = 5 } = {}) {
+		const engineName = getValidEngineName();
+		const engineConfig = CONFIG.TRANS_ENGINES[engineName];
+		if (!engineConfig) {
+			throw new Error(`服务 ${engineName} 未配置`);
+		}
 
-        try {
-            let translatedText;
-            if (engineName === 'google_ai') {
-                translatedText = await _handleGoogleAiRequest(engineConfig, paragraphs);
-            } else {
-                translatedText = await _handleStandardApiRequest(engineConfig, paragraphs);
-            }
-            
-            if (typeof translatedText !== 'string' || !translatedText.trim()) {
-                throw new Error('API 未返回有效文本');
-            }
-            
-            return translatedText;
+		try {
+			let translatedText;
+			if (engineName === 'google_ai') {
+				translatedText = await _handleGoogleAiRequest(engineConfig, paragraphs);
+			} else {
+				translatedText = await _handleStandardApiRequest(engineConfig, paragraphs, engineName);
+			}
+			
+			if (typeof translatedText !== 'string' || !translatedText.trim()) {
+				throw new Error('API 未返回有效文本');
+			}
+			
+			return translatedText;
 
-        } catch (error) {
-            const isRetriable = ['server_overloaded', 'rate_limit', 'network', 'timeout'].includes(error.type) ||
-                                error.message.includes('超时') || 
-                                error.message.includes('网络');
+		} catch (error) {
+			const isRetriable = ['server_overloaded', 'rate_limit', 'network', 'timeout'].includes(error.type) ||
+								error.message.includes('超时') || 
+								error.message.includes('网络');
 
-            if (retryCount < maxRetries && isRetriable) {
-                const delay = Math.pow(2, retryCount) * 1500 + Math.random() * 1000;
-                console.warn(`请求遇到可重试错误：${error.message}。将在 ${Math.round(delay/1000)} 秒后重试（第 ${retryCount + 1} 次）...`);
-                await sleep(delay);
-                return await requestRemoteTranslation(paragraphs, { retryCount: retryCount + 1, maxRetries });
-            }
-            throw error;
-        }
-    }
+			if (retryCount < maxRetries && isRetriable) {
+				const delay = Math.pow(2, retryCount) * 1500 + Math.random() * 1000;
+				console.warn(`请求遇到可重试错误：${error.message}。将在 ${Math.round(delay/1000)} 秒后重试（第 ${retryCount + 1} 次）...`);
+				await sleep(delay);
+				return await requestRemoteTranslation(paragraphs, { retryCount: retryCount + 1, maxRetries });
+			}
+			throw error;
+		}
+	}
 
     /**
      * 设置用户自己的 ChatGLM API Key
@@ -2359,153 +2370,153 @@
     /**
      * 菜单渲染函数
      */
-    function renderMenuCommands() {
-        menuCommandIds.forEach(id => GM_unregisterMenuCommand(id));
-        menuCommandIds = [];
+	function renderMenuCommands() {
+		menuCommandIds.forEach(id => GM_unregisterMenuCommand(id));
+		menuCommandIds = [];
 
-        const register = (text, callback) => {
-            menuCommandIds.push(GM_registerMenuCommand(text, callback));
-        };
+		const register = (text, callback) => {
+			menuCommandIds.push(GM_registerMenuCommand(text, callback));
+		};
 
-        const engineMenuConfig = {
-            'together_ai': {
-                displayName: 'Together AI',
-                modelGmKey: 'together_model',
-                modelMapping: {
-                    'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8': 'Llama 4',
-                    'deepseek-ai/DeepSeek-V3': 'DeepSeek V3'
-                },
-                apiKeySetupFunction: null
-            },
-            'zhipu_ai': {
-                displayName: 'Zhipu AI',
-                modelGmKey: null,
-                apiKeySetupFunction: setupZhipuAIKey
-            },
-            'deepseek_ai': {
-                displayName: 'DeepSeek',
-                modelGmKey: 'deepseek_model',
-                modelMapping: {
-                    'deepseek-chat': 'DeepSeek V3',
-                    'deepseek-reasoner': 'DeepSeek R1'
-                },
-                apiKeySetupFunction: setupDeepSeekKey
-            },
-            'google_ai': {
-                displayName: 'Google AI',
-                modelGmKey: 'google_ai_model',
-                modelMapping: {
-                    'gemini-2.5-pro': 'Gemini 2.5 Pro',
-                    'gemini-2.5-flash': 'Gemini 2.5 Flash',
-                    'gemini-2.5-flash-lite': 'Gemini 2.5 Flash-Lite'
-                },
-                apiKeySetupFunction: setupGoogleAiKeys
-            },
-            'groq_ai': {
-                displayName: 'Groq AI',
-                modelGmKey: 'groq_model',
-                modelMapping: {
-                    'meta-llama/llama-4-maverick-17b-128e-instruct': 'Llama 4',
-                    'moonshotai/kimi-k2-instruct': 'Kimi K2',
-                    'deepseek-r1-distill-llama-70b': 'DeepSeek 70B',
-                    'openai/gpt-oss-120b': 'GPT-OSS 120B'
-                },
-                apiKeySetupFunction: setupGroqAIKey
-            }
-        };
+		const engineMenuConfig = {
+			'together_ai': {
+				displayName: 'Together AI',
+				modelGmKey: 'together_model',
+				modelMapping: {
+					'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8': 'Llama 4',
+					'deepseek-ai/DeepSeek-V3': 'DeepSeek V3'
+				},
+				apiKeySetupFunction: null
+			},
+			'zhipu_ai': {
+				displayName: 'Zhipu AI',
+				modelGmKey: null,
+				apiKeySetupFunction: setupZhipuAIKey
+			},
+			'deepseek_ai': {
+				displayName: 'DeepSeek',
+				modelGmKey: 'deepseek_model',
+				modelMapping: {
+					'deepseek-chat': 'DeepSeek V3',
+					'deepseek-reasoner': 'DeepSeek R1'
+				},
+				apiKeySetupFunction: setupDeepSeekKey
+			},
+			'google_ai': {
+				displayName: 'Google AI',
+				modelGmKey: 'google_ai_model',
+				modelMapping: {
+					'gemini-2.5-pro': 'Gemini 2.5 Pro',
+					'gemini-2.5-flash': 'Gemini 2.5 Flash',
+					'gemini-2.5-flash-lite': 'Gemini 2.5 Flash-Lite'
+				},
+				apiKeySetupFunction: setupGoogleAiKeys
+			},
+			'groq_ai': {
+				displayName: 'Groq AI',
+				modelGmKey: 'groq_model',
+				modelMapping: {
+					'meta-llama/llama-4-maverick-17b-128e-instruct': 'Llama 4',
+					'moonshotai/kimi-k2-instruct': 'Kimi K2',
+					'deepseek-r1-distill-llama-70b': 'DeepSeek 70B',
+					'openai/gpt-oss-120b': 'GPT-OSS 120B'
+				},
+				apiKeySetupFunction: setupGroqAIKey
+			}
+		};
 
-        const isAiTranslationEnabled = GM_getValue('enable_transDesc', false);
+		const isAiTranslationEnabled = GM_getValue('enable_transDesc', false);
 
-        if (currentMenuView === 'main') {
-            register(isAiTranslationEnabled ? '禁用 AI 翻译功能' : '启用 AI 翻译功能', () => {
-                const newState = !isAiTranslationEnabled;
-                GM_setValue('enable_transDesc', newState);
-                FeatureSet.enable_transDesc = newState;
-                notifyAndLog(`AI 翻译功能已${newState ? '启用' : '禁用'}`);
-                if (newState) {
-                    transDesc();
-                } else {
-                    document.querySelectorAll('.translate-me-ao3-wrapper, .translated-by-ao3-script, .translated-by-ao3-script-error').forEach(el => el.remove());
-                    document.querySelectorAll('[data-translation-handled="true"], [data-state="translated"]').forEach(el => {
-                        delete el.dataset.translationHandled;
-                        delete el.dataset.state;
-                    });
-                }
-                renderMenuCommands();
-            });
+		if (currentMenuView === 'main') {
+			register(isAiTranslationEnabled ? '禁用 AI 翻译功能' : '启用 AI 翻译功能', () => {
+				const newState = !isAiTranslationEnabled;
+				GM_setValue('enable_transDesc', newState);
+				FeatureSet.enable_transDesc = newState;
+				notifyAndLog(`AI 翻译功能已${newState ? '启用' : '禁用'}`);
+				if (newState) {
+					transDesc();
+				} else {
+					document.querySelectorAll('.translate-me-ao3-wrapper, .translated-by-ao3-script, .translated-by-ao3-script-error').forEach(el => el.remove());
+					document.querySelectorAll('[data-translation-handled="true"], [data-state="translated"]').forEach(el => {
+						delete el.dataset.translationHandled;
+						delete el.dataset.state;
+					});
+				}
+				renderMenuCommands();
+			});
 
-            if (isAiTranslationEnabled) {
-                register('管理 AI 翻译术语表', () => {
-                    currentMenuView = 'glossary';
-                    renderMenuCommands();
-                });
+			if (isAiTranslationEnabled) {
+				register('管理 AI 翻译术语表', () => {
+					currentMenuView = 'glossary';
+					renderMenuCommands();
+				});
 
-                const currentMode = GM_getValue('translation_display_mode', 'bilingual');
-                const modeText = currentMode === 'bilingual' ? '双语对照' : '仅译文';
-                register(`⇄ 翻译模式：${modeText}`, () => {
-                    const newMode = currentMode === 'bilingual' ? 'translation_only' : 'bilingual';
-                    GM_setValue('translation_display_mode', newMode);
-                    applyDisplayModeChange(newMode);
-                    notifyAndLog(`翻译模式已切换为: ${newMode === 'bilingual' ? '双语对照' : '仅译文'}`);
-                    renderMenuCommands();
-                });
+				const currentMode = GM_getValue('translation_display_mode', 'bilingual');
+				const modeText = currentMode === 'bilingual' ? '双语对照' : '仅译文';
+				register(`⇄ 翻译模式：${modeText}`, () => {
+					const newMode = currentMode === 'bilingual' ? 'translation_only' : 'bilingual';
+					GM_setValue('translation_display_mode', newMode);
+					applyDisplayModeChange(newMode);
+					notifyAndLog(`翻译模式已切换为: ${newMode === 'bilingual' ? '双语对照' : '仅译文'}`);
+					renderMenuCommands();
+				});
 
-                const currentEngineId = GM_getValue('transEngine', 'together_ai');
-                const currentEngineConfig = engineMenuConfig[currentEngineId];
-                register(`⇄ 翻译服务：${currentEngineConfig.displayName}`, () => {
-                    currentMenuView = 'select_service';
-                    renderMenuCommands();
-                });
+				const currentEngineId = getValidEngineName();
+				const currentEngineConfig = engineMenuConfig[currentEngineId];
+				register(`⇄ 翻译服务：${currentEngineConfig.displayName}`, () => {
+					currentMenuView = 'select_service';
+					renderMenuCommands();
+				});
 
-                if (currentEngineConfig.modelGmKey && currentEngineConfig.modelMapping) {
-                    const modelOrder = Object.keys(currentEngineConfig.modelMapping);
-                    const currentModelId = GM_getValue(currentEngineConfig.modelGmKey, modelOrder[0]);
-                    const currentModelIndex = modelOrder.indexOf(currentModelId);
-                    const nextModelIndex = (currentModelIndex + 1) % modelOrder.length;
-                    const nextModelId = modelOrder[nextModelIndex];
-                    register(`⇄ 使用模型：${currentEngineConfig.modelMapping[currentModelId]}`, () => {
-                        GM_setValue(currentEngineConfig.modelGmKey, nextModelId);
-                        notifyAndLog(`${currentEngineConfig.displayName} 模型已切换为: ${currentEngineConfig.modelMapping[nextModelId]}`);
-                        renderMenuCommands();
-                    });
-                }
+				if (currentEngineConfig.modelGmKey && currentEngineConfig.modelMapping) {
+					const modelOrder = Object.keys(currentEngineConfig.modelMapping);
+					const currentModelId = GM_getValue(currentEngineConfig.modelGmKey, modelOrder[0]);
+					const currentModelIndex = modelOrder.indexOf(currentModelId);
+					const nextModelIndex = (currentModelIndex + 1) % modelOrder.length;
+					const nextModelId = modelOrder[nextModelIndex];
+					register(`⇄ 使用模型：${currentEngineConfig.modelMapping[currentModelId]}`, () => {
+						GM_setValue(currentEngineConfig.modelGmKey, nextModelId);
+						notifyAndLog(`${currentEngineConfig.displayName} 模型已切换为: ${currentEngineConfig.modelMapping[nextModelId]}`);
+						renderMenuCommands();
+					});
+				}
 
-                if (currentEngineConfig.apiKeySetupFunction) {
-                    register(`▶ 设置 ${currentEngineConfig.displayName} API Key`, currentEngineConfig.apiKeySetupFunction);
-                }
-            }
-        }
-        else if (currentMenuView === 'select_service') {
-            register('← 返回到主菜单', () => {
-                currentMenuView = 'main';
-                renderMenuCommands();
-            });
+				if (currentEngineConfig.apiKeySetupFunction) {
+					register(`▶ 设置 ${currentEngineConfig.displayName} API Key`, currentEngineConfig.apiKeySetupFunction);
+				}
+			}
+		}
+		else if (currentMenuView === 'select_service') {
+			register('← 返回到主菜单', () => {
+				currentMenuView = 'main';
+				renderMenuCommands();
+			});
 
-            const currentEngineId = GM_getValue('transEngine', 'together_ai');
-            Object.keys(engineMenuConfig).forEach(engineId => {
-                if (engineId !== currentEngineId) {
-                    const { displayName } = engineMenuConfig[engineId];
-                    register(`⇄ 切换至：${displayName}`, () => {
-                        GM_setValue('transEngine', engineId);
-                        currentMenuView = 'main';
-                        notifyAndLog(`翻译服务已切换为: ${displayName}`);
-                        renderMenuCommands();
-                    });
-                }
-            });
-        }
-        else if (currentMenuView === 'glossary') {
-            register('←返回到主菜单', () => {
-                currentMenuView = 'main';
-                renderMenuCommands();
-            });
-            register('设置本地术语表', manageGlossary);
-            register('设置禁翻术语表', manageForbiddenTerms);
-            register('导入在线术语表', importOnlineGlossary);
-            register('管理已有术语表', manageImportedGlossaries);
-            register('清空所有术语表', clearAllGlossaries);
-        }
-    }
+			const currentEngineId = getValidEngineName();
+			Object.keys(engineMenuConfig).forEach(engineId => {
+				if (engineId !== currentEngineId) {
+					const { displayName } = engineMenuConfig[engineId];
+					register(`⇄ 切换至：${displayName}`, () => {
+						GM_setValue('transEngine', engineId);
+						currentMenuView = 'main';
+						notifyAndLog(`翻译服务已切换为: ${displayName}`);
+						renderMenuCommands();
+					});
+				}
+			});
+		}
+		else if (currentMenuView === 'glossary') {
+			register('←返回到主菜单', () => {
+				currentMenuView = 'main';
+				renderMenuCommands();
+			});
+			register('设置本地术语表', manageGlossary);
+			register('设置禁翻术语表', manageForbiddenTerms);
+			register('导入在线术语表', importOnlineGlossary);
+			register('管理已有术语表', manageImportedGlossaries);
+			register('清空所有术语表', clearAllGlossaries);
+		}
+	}
 
     /**
      * 动态应用翻译翻译模式的函数
