@@ -1,7 +1,7 @@
 /**
  name         AO3 汉化插件 - 词库
  namespace    https://github.com/V-Lipset/ao3-chinese
- version      1.4.0-2025-08-15
+ version      1.4.1-2025-08-16
  description  AO3 汉化插件的词库文件
  author       V-Lipset
  license      GPL-3.0
