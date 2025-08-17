@@ -13,18 +13,16 @@
 ## 🔧 安装
 
 1.  在浏览器中安装一个用户脚本管理器，推荐使用 [Tampermonkey](https://www.tampermonkey.net/) 。
-2.  开启浏览器 “管理扩展” 中的 “开发人员模式”。
-3.  选择一个版本进行安装：
+2.  开启浏览器 “管理扩展程序” 中的 “开发者模式” 。
+3.  点击 “篡改猴” -> `详情` -> `允许运行用户脚本` 。
+4.  选择一个版本进行安装：
     - [远程版](https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/main.user.js)
     - [本地版](https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/local.user.js)
-4.  注意：鉴于可能存在的网络问题，建议优先使用包含了词库的 [本地版](https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/local.user.js) 。
-5.  如果以上链接无法访问或访问速度过慢，可以选择通过网盘进行安装：
-    - [夸克网盘](https://pan.quark.cn/s/41bf3604f803)
 
 ## 📖 使用说明
 
 - 安装脚本后，访问 [AO3 网站](https://archiveofourown.org/) ，界面将自动变为中文。
-- 如需使用 AI 翻译功能，请点击 `Tampermonkey 图标` -> `AO3 汉化插件` -> `启用 AI 翻译功能` 。在作品页面，你会看到新增的“翻译简介”、“翻译注释”、“翻译正文”等按钮，点击即可使用。
+- 如需使用 AI 翻译功能，请点击 `Tampermonkey 图标` -> `AO3 汉化插件` -> `启用 AI 翻译功能` 。在作品页面，你会看到新增的 “翻译简介” 、“翻译注释” 、“翻译正文” 等按钮，点击即可使用。
 
 ## 🤝 贡献与反馈
 
