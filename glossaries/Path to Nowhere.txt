@@ -1,5 +1,5 @@
 维护者：V-Lipset
-版本号：1.0.3
+版本号：1.0.5
 更新时间：2025-08-15
 
 
@@ -92,7 +92,7 @@ Moore：摩尔
 Mr. Fox：福克斯先生
 NOX：诺克斯
 Narciso Anastasia：安那苏
-Nightingale：夜莺
+Nightingale Adjutant = 夜莺 副官
 Ninety-Nine：九十九
 Nino：妮诺
 Oak Casket：橡木匣
