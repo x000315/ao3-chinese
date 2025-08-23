@@ -1,7 +1,7 @@
 /**
  name         AO3 汉化插件 - 词库
  namespace    https://github.com/V-Lipset/ao3-chinese
- version      1.4.1-2025-08-16
+ version      1.5.0-2025-08-23
  description  AO3 汉化插件的词库文件
  author       V-Lipset
  license      GPL-3.0
@@ -22,7 +22,7 @@ const I18N = {
             'works_show': ['.stats .hits', '.stats .kudos'],
         },
         ignoreSelectorPage: {
-            '*': ['script', 'style', 'noscript', 'iframe', 'canvas', 'video', 'audio', 'img', 'svg', 'pre', 'code', '.userstuff.workskin', '.workskin', 'div.autocomplete.dropdown ul', 'dd.freeform.tags', '[data-translated-by-custom-function]'],
+            '*': ['script', 'style', 'noscript', 'iframe', 'canvas', 'video', 'audio', 'img', 'svg', 'pre', 'code', '.userstuff.workskin', '.workskin', 'div.autocomplete.dropdown ul', 'dd.freeform.tags', '[data-translated-by-custom-function]', 'li.freeforms'],
             'works_show': ['.dropdown.actions-menu ul', '.userstuff'],
 			'works_chapters_show': ['.userstuff'],
             'admin_posts_show': ['.userstuff'],
@@ -632,6 +632,7 @@ const I18N = {
                     'This is a draft chapter in a posted work. It will be kept unless the work is deleted.': '这是已发布作品中的一篇草稿章节。除非作品被删除，否则该草稿将一直保留。',
                     'This chapter is a draft and hasn\'t been posted yet!': '本章节为草稿，尚未发布！',
 				'Are you sure you want to delete this bookmark?': '您确定要删除此书签吗？',
+				'This is part of an ongoing challenge and will be revealed soon!': '本作品正在参与一项开放中的挑战，内容将很快揭晓！'
             },
             'innerHTML_regexp': [
 
@@ -661,8 +662,8 @@ const I18N = {
                 ['h2.heading', /^\s*([\d,]+)\s+Works?\s+in\s+(<a[^>]+>.+?<\/a>)\s*$/s, '$2：$1 篇作品'],
                 ['dd.expandable dl.range dt label', /^From$/s, '从'],
                 ['dd.expandable dl.range dt label', /^To$/s, '到'],
-                ['label[for^="include_work_search_category_ids_"] span:last-of-type', /^(Other)(\s*\(\d+\))$/s, '其她$2'],
-                ['label[for^="include_bookmark_search_category_ids_"] span:last-of-type', /^(Other)(\s*\(\d+\))$/s, '其她$2'],
+                    ['label[for*="_work_search_category_ids_"] span:last-of-type', /^(Other)(\s*\(\d+\))$/s, '其她$2'],
+                ['label[for*="_bookmark_search_category_ids_"] span:last-of-type', /^(Other)(\s*\(\d+\))$/s, '其她$2'],
                 ['h2.heading', /^\s*(\d+)\s*-\s*(\d+)\s*of\s*([0-9,]+)\s*Bookmarks by\s*(.+)\s*$/s, '$4：$3 条书签，第 $1 - $2 条'],
                 ['h2.heading', /^\s*(\d+)\s*-\s*(\d+)\s+of\s+([0-9,]+)\s+Works?\s+by\s+(.+)\s*$/s, '$4：$3 篇作品，第 $1 - $2 篇'],
                 ['h2.heading', /^\s*(\d+)\s*-\s*(\d+)\s+of\s+([0-9,]+)\s+(?:Bookmarked Items|已创建书签作品) in\s+(<a[^>]+>.+?<\/a>)\s*$/s, '$4：$3 篇已创建书签作品，第 $1 - $2 篇'],
@@ -679,7 +680,7 @@ const I18N = {
                 ['h2.heading', /^\s*([\d,]+)\s+Collections?\s*$/s, '$1 个合集'],
                 [
                     'dt',
-                    /(<\/a>)\s*\(Work\)\s+by\s*(<a\s+rel="author".*)/s,
+                    /(<\/a>)\s*\(Work\)\s+by\s*(<a\s+rel="author".*?>.*?<\/a>|[^<]+)/s,
                     '$1（作品）by $2'
                 ],
                 [
@@ -701,6 +702,21 @@ const I18N = {
                 ['div#share p.note', /^Copy and paste the following code to link back to this work \((<kbd>CTRL A<\/kbd>\/<kbd>CMD A<\/kbd>) will select all\), or use the Tweet or Tumblr links to share the work on your Twitter or Tumblr account\.$/s, '请复制以下代码以添加指向此作品的链接（按 $1 可全选），或使用 Tweet / Tumblr 链接在您的 Twitter / Tumblr 账户上分享此作品。'],
                 ['h2.heading', /^\s*([\d,]+)\s+Bookmarks?\s*$/s, '$1 条书签'],
                 ['h2.heading', /^\s*(\d+)\s*-\s*(\d+)\s+of\s+([0-9,]+)\s+Bookmarks?\s*$/s, '第 $1 - $2 条，共 $3 条书签'],
+				[
+					'h6.landmark.heading',
+					/^Bookmarker's Notes$/,
+					'书签创建者的注释'
+				],
+				[
+					'h4.heading',
+					/^Mystery Work$/,
+					'神秘作品'
+				],
+				[
+					'h5.heading',
+					/^Part of (<a href="\/collections\/.*?">.+?<\/a>)$/,
+					'属于合集：$1'
+				],
 
                 // 界面
                 ['div.flash.notice', /^The skin (.+) has been set\. This will last for your current session\.$/s, '$1 界面已启用，此设置将在当前会话期间持续生效。'],
@@ -982,7 +998,7 @@ const I18N = {
             'Moderated': '审核制',
             'Unmoderated': '非审核制',
             'Unrevealed': '未揭晓',
-            'Anonymous': '匿名投稿',
+            'Anonymous': '匿名',
             'Gift Exchange Challenges': '赠文交换活动',
             'Gift Exchange Challenge': '赠文交换活动',
             'Prompt Meme Challenges': '接梗挑战',
@@ -2065,7 +2081,7 @@ const I18N = {
                 ['h3.heading', /^\s*Requests?(.*)\s*$/, '请求$1'],
                 ['h3.heading', /^\s*Offers?(.*)\s*$/, '提供$1'],
                 ['ul.commas.index.group', /^\s*(\d+)\s+anonymous\s+claimant(s?)\s*$/, '$1 位匿名认领者'],
-                ['h4.heading', /^\s*Request\s+by\s+(?:Anonymous|匿名投稿)\s*$/s, '请求 by 匿名投稿'],
+                ['h4.heading', /^\s*Request\s+by\s+(?:Anonymous|匿名)\s*$/s, '请求 by 匿名'],
                 ['p.actions a.showme', /^\s*Add another request\?\s*\(Up to (\d+) allowed\.\)\s*$/, '添加另一个请求项？（最多可添加 $1 个）'],
                 ['p.actions a.showme', /^\s*Add another offer\?\s*\(Up to (\d+) allowed\.\)\s*$/, '添加另一个提供项？（最多可添加 $1 个）'],
                 ['h2.heading', /^\s*(\d+)\s+Works? in\s*(<a href="\/collections\/.*?">.+?<\/a>)\s*$/s, '$2 中的 $1 篇作品'],
@@ -2180,6 +2196,7 @@ const I18N = {
                 'Previous Post': '上一篇',
                 'Next Post': '下一篇',
                 'Published:': '发布于：',
+                    'Original:': '原文：',
                 'Tags:': '标签：',
                 'Translations:': '翻译版本：',
                 '↑ Top': '↑ 返回顶部',
