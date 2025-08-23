@@ -30,10 +30,9 @@
 
 ## 📄 许可证
 
-本脚本主要基于 [GPL-3.0 License](./LICENSE) 许可证开源。
-
-项目中集成的部分代码源自以下开源项目，并遵循其原始许可证。详情请参阅源代码中的注释以及 `LICENSES` 目录。
-- `Traduzir-paginas-web` 项目的相关逻辑遵循 [MPL-2.0 License](./LICENSES/MPL-2.0.txt) 。
+1. 本项目基于 [GPL-3.0 License](./LICENSE) 许可证开源。  
+2. 项目中集成的部分代码源自以下开源项目，并遵循其原始许可证。详情请参阅源代码中的注释以及 `LICENSES` 目录。
+    - [Traduzir-paginas-web](https://github.com/FilipePS/Traduzir-paginas-web)
 
 ## 🙏 特别鸣谢
 - [V-Lipset](https://github.com/V-Lipset)
