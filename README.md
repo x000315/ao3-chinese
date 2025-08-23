@@ -40,4 +40,4 @@
 - [github-chinese](https://github.com/maboloshi/github-chinese)
 - 谷歌翻译接入参考：[Traduzir-paginas-web](https://github.com/FilipePS/Traduzir-paginas-web)
 - UI 参考：[kiss-translator](https://github.com/fishjar/kiss-translator)
-- 部分图标来自：[Google Material Symbols](https://github.com/fishjar/kiss-translator)
+- 部分图标来自：[Google Material Symbols](https://fonts.google.com/icons)
