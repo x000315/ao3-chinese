@@ -1,6 +1,6 @@
 维护者：V-Lipset
-版本号：1.0.5
-更新时间：2025-08-15
+版本号：1.0.6
+更新时间：2025-08-29
 
 
 词条
@@ -141,29 +141,26 @@ Yingying：萦萦
 Yugu：玉骨
 Zephyr：泽斐尔
 Zoya：卓娅
+Elvira Stewart = 艾尔维拉·斯图尔特
+El：艾尔
+Sable：赛泊尔
 
 // 组织和地点
 Dis City：狄斯城
 DisCity：狄斯城
-Syndican：辛迪加
+Syndicate：辛迪加
 Salva Hospital：彼岸诊所
 Minos Bureau of Crisis Control：米诺斯危机管理局
-Ninth Agency：第九机关
-9th Agency：第九机关
+Ninth：第九
+9th：第九
 Quinn：奎恩
 Eastern：东洲
 Paradeisos：上庭
 Legion：军团
 
 // 概念
-Sinner：禁闭者
-Shepherd：牧羊人
-Shackles：枷锁
-DisCoin：狄斯币
-Schorl：黑石英
 Sun Crow：金乌
 Mecrsta：幽冕
-
 Endura：坚韧
 Fury：狂暴
 Umbra：诡秘
@@ -172,7 +169,6 @@ Arcane：异能
 Catalyst：启迪
 Tendency：特化
 
-Adjutant：副官
 Franc：芙兰克
 Cavendish：卡文迪许
 Mad Shear：剪疯子
@@ -183,7 +179,14 @@ Mentor：业师
 
 Hypercube：异方晶
 Magic：异能
-
+Agency：机关
+Sinner：禁闭者
+Shepherd：牧羊人
+Shackles：枷锁
+DisCoin：狄斯币
+Schorl：黑石英
+Prime Minister：议长
+Adjutant：副官
 
 禁翻词条
 
