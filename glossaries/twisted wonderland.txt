@@ -119,7 +119,7 @@ Magical Shift：魔法竞技
 magift：魔技
 spelldrive：魔法竞技
 dorm：寮
-Dorm Head：寮长
+dorm Head：寮长
 MagiCam：魔讯
 prefect：监督生
 
