@@ -1,0 +1,149 @@
+维护者：minasami
+版本号：1.0.1
+更新时间：2025.08.29
+
+词条
+
+//角色
+Riddle：里德尔
+Ace：艾斯
+Deuce：杜斯
+Trey：特雷
+Cater：凯特
+Leona：雷欧纳
+Jack：杰克
+Ruggie：拉吉
+Azul：阿祖尔
+Jade：杰德
+Floyd：弗洛伊德
+Kalim：卡利姆
+Jamil：贾米尔
+Vil：维尔
+Epel：卢克
+Idia：伊迪亚
+Ortho：奥尔托
+Malleus：马雷乌斯
+Lilia：莉莉亚
+Sebek：塞贝克
+Dire：迪亚
+Divus：迪乌斯
+Mozus：莫泽斯
+Ashton：阿什顿
+Neige：内奇
+Rollo：洛洛
+Fellow：菲洛
+Rosehearts：洛兹哈特
+Trappola：特拉波拉
+Spade：斯佩德
+Clover：克洛弗
+Diamond：戴蒙德
+Kingscholar：金斯考勒
+Howl：豪尔
+Bucchi：布奇
+Ashengrotto：阿谢恩格罗托
+Leech：里奇
+Al-Asim：阿尔阿西姆
+Asim：阿西姆
+Viper：拜帕
+Schoenheit：舍恩海特
+Felmier：费尔米耶
+Hunt：亨特
+Shroud：施劳德
+Draconia：德拉科尼亚
+Vanrouge：范卢什
+Zigvolt：齐格博尔特
+Crowley：克劳利
+Crewel：克鲁维尔
+Trein：特雷因
+Vargas：瓦尔加斯
+LeBlanche：勒布朗谢
+Flamme：弗拉姆
+Honest：奥内斯特
+Riddle Rosehearts：里德尔·洛兹哈特
+Ace Trappola：艾斯·特拉波拉
+Deuce Spade：杜斯·斯佩德
+Trey Clover：特雷·克洛弗
+Cater Diamond：凯特·戴蒙德
+Leona Kingscholar：雷欧纳·金斯考勒
+Jack Howl：杰克·豪尔
+Ruggie Bucchi：拉吉·布奇
+Azul Ashengrotto：阿祖尔·阿谢恩格罗托
+Jade Leech：杰德·里奇
+Floyd Leech：弗洛伊德·里奇
+Kalim Al-Asim：卡利姆·阿尔阿西姆
+Jamil Viper：贾米尔·拜帕
+Vil Schoenheit：维尔·舍恩海特
+Epel Felmier：艾珀尔·费尔米耶
+Rook Hunt：卢克·亨特
+Idia Shroud：伊迪亚·施劳德
+Ortho Shroud：奥尔托·施劳德
+Malleus Draconia：马雷乌斯·德拉科尼亚
+Lilia Vanrouge：莉莉亚·范卢什
+Sebek Zigvolt：塞贝克·齐格博尔特
+Dire Crowley：迪亚·克劳利
+Divus Crewel：迪乌斯·克鲁维尔
+Mozus Trein：莫泽斯·特雷因
+Ashton Vargas：阿什顿·瓦尔加斯
+Artemiy Artemiyevich Pinker：阿尔特弥斯·阿尔切尼米耶维奇·平克
+Neige LeBlanche：内奇·勒布朗谢
+Rollo Flamme：洛洛·弗拉姆
+Fellow Honest：菲洛·奥内斯特
+
+//地名
+Heartslabyul：哈茨拉比尔
+Savanaclaw：萨瓦纳克劳
+Octavinelle：奥克塔维奈尔
+Scarabia：斯卡拉比亚
+Pomefiore：波姆菲奥雷
+Ignihyde：伊格尼海德
+Diasomnia：迪亚索尼亚
+Royal Sword Academy：王剑学园
+Night Raven College：夜鸦学院
+Ramshackle Dorm：小破寮
+Mostro Lounge：海怪酒廊
+Queendom of Roses：蔷薇王国
+Shaftlands：辉石之国
+Scalding Sands：热砂之国
+Harveston：丰收村
+Sunset Savanna：夕阳草原
+Island of Woe：哀叹之岛
+Briar Valley：荆棘之谷
+Noble Bell College：圣钟学院
+Twisted Wonderland：扭曲仙境
+
+//术语
+Blot：浊墨
+Overblot：浊墨溢出
+magicians：魔法士
+Magical Shift：魔法竞技
+magift：魔技
+spelldrive：魔法竞技
+dorm：寮
+dorm Head：寮长
+MagiCam：魔讯
+prefect：监督生
+
+//个性魔法
+OFF WITH YOUR HEAD：砍掉你的头
+DOODLE SUIT：粉刷玫瑰
+SPLIT CARD：飞舞飘落的卡牌
+JOKER SNATCH：王牌夺取
+BET THE LIMIT：以牙还牙
+KING'S ROAR：王者的咆哮
+UNLEASH BEAST：划破月夜的狼嚎
+LAUGH WITH ME：愚者的游行
+IT'S A DEAL：黄金契约书
+SHOCK THE HEART：咬噬之齿
+BIND THE HEART：绞缚之尾
+OASIS MAKER：永不枯竭的恩惠
+SNAKE WHISPER：蛇的引诱
+FAIREST ONR OF ALL：美冠群芳之毒
+SLEEP KISS：深红的果实
+I SEE YOU：及终之矢
+GATE TO UNDERWORLD：开启的冥界之门
+MEET IN A DREAM：落入同一个梦境
+FAR CRY CRADLE：直至遥远的摇篮
+FAE OF MALEFICENCE：祝福
+LIVING BOLT：迅雷一闪
+DARK FIRE：燃之不尽的欲望
+LIFE IS FUN：玫瑰色的梦
