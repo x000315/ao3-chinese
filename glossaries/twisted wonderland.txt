@@ -1,5 +1,5 @@
 维护者：minasami
-版本号：1.0.0
+版本号：1.0.1
 更新时间：2025.08.29
 
 词条
@@ -42,7 +42,7 @@ Howl：豪尔
 Bucchi：布奇
 Ashengrotto：阿谢恩格罗托
 Leech：里奇
-Al-Asim：阿尔-阿西姆
+Al-Asim：阿尔阿西姆
 Asim：阿西姆
 Viper：拜帕
 Schoenheit：舍恩海特
@@ -59,6 +59,35 @@ Vargas：瓦尔加斯
 LeBlanche：勒布朗谢
 Flamme：弗拉姆
 Honest：奥内斯特
+Riddle Rosehearts：里德尔·洛兹哈特
+Ace Trappola：艾斯·特拉波拉
+Deuce Spade：杜斯·斯佩德
+Trey Clover：特雷·克洛弗
+Cater Diamond：凯特·戴蒙德
+Leona Kingscholar：雷欧纳·金斯考勒
+Jack Howl：杰克·豪尔
+Ruggie Bucchi：拉吉·布奇
+Azul Ashengrotto：阿祖尔·阿谢恩格罗托
+Jade Leech：杰德·里奇
+Floyd Leech：弗洛伊德·里奇
+Kalim Al-Asim：卡利姆·阿尔阿西姆
+Jamil Viper：贾米尔·拜帕
+Vil Schoenheit：维尔·舍恩海特
+Epel Felmier：艾珀尔·费尔米耶
+Rook Hunt：卢克·亨特
+Idia Shroud：伊迪亚·施劳德
+Ortho Shroud：奥尔托·施劳德
+Malleus Draconia：马雷乌斯·德拉科尼亚
+Lilia Vanrouge：莉莉亚·范卢什
+Sebek Zigvolt：塞贝克·齐格博尔特
+Dire Crowley：迪亚·克劳利
+Divus Crewel：迪乌斯·克鲁维尔
+Mozus Trein：莫泽斯·特雷因
+Ashton Vargas：阿什顿·瓦尔加斯
+Artemiy Artemiyevich Pinker：阿尔特弥斯·阿尔切尼米耶维奇·平克
+Neige LeBlanche：内奇·勒布朗谢
+Rollo Flamme：洛洛·弗拉姆
+Fellow Honest：菲洛·奥内斯特
 
 //地名
 Heartslabyul：哈茨拉比尔
