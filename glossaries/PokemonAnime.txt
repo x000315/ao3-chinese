@@ -1,5 +1,5 @@
 维护者：Senka
-版本号：1.0.0
+版本号：1.0.1
 更新时间：2025-09-18
 
 禁翻词条
@@ -129,6 +129,9 @@ Peony：皮欧尼
 Korrina：可尔妮
 Olympia：葛吉花
 
+// 开拓区
+Dahlia：大丽
+
 // 阿罗拉地域
 Mimey：小魔
 Melemele：美乐美乐
@@ -143,6 +146,7 @@ Acerola：阿塞萝拉
 Nanu：默丹
 Hapu：哈普乌
 Lanakila：拉纳基拉
+Rotom Dex：洛托姆图鉴
 
 // 路人
 Jenny：君莎
@@ -1065,20 +1069,27 @@ Kasumi：小霞
 Haruka：小遥
 
 // 术语
-type：属性
+I choose you：就决定是你了
+Twerp：小鬼头
+Ashy-boy：小智君
 Rival：劲敌
 Badge：徽章
 League：联盟
+Pokéball：宝可梦球
 Legendary：传说宝可梦
+legendary Pokémon：传说宝可梦
 Coordinator：协调训练家
 trainer：训练家
 Aura：波导
+malasada：马拉萨达
+malasadas：马拉萨达
 
 // 称号
 Champion：冠军
 Gym Leader = 道馆 馆主
 Chosen One：神子
 Battle Frontier：对战开拓区
+Frontier：开拓区
 Frontier Brain：开拓头脑
 Princess of Hoenn：丰缘舞姬
 Ultra Guardians：究极防卫队
@@ -1087,10 +1098,13 @@ Ultra Guardians：究极防卫队
 Ash-Greninja：小智版甲贺忍蛙
 bond phenomenon = 羁绊 现象
 Z-Ring：Ｚ手环
+Z-moves：Z招式
+Z-move：Z招式
 Z-Crystal：Ｚ纯晶
 Dynamax Band：极巨腕带
 Dynamax：极巨化
 Terastal：太晶化
+Ultra Beasts：究极异兽
 
 // 具体地名
 Pallet Town：真新镇
@@ -1110,6 +1124,7 @@ Team Aqua：海洋队
 Team Galactic：银河队
 Team Plasma：等离子队
 Team Flare：闪焰队
+Kalos Crisis：卡洛斯危机
 Team Skull：骷髅队
 Aether Foundation = 以太 基金会
 Team Yell：呐喊队
@@ -1138,18 +1153,24 @@ Lumiose：密阿雷
 Manalo：玛纳罗
 
 // 属性
-Normal type：一般属性
-Flying：飞行
-Psychic：超能力
-Bug type：虫属性
-Rock type：岩石属性
-Ghost type：幽灵属性
-Fighting type：格斗属性
-Dark type：恶属性
-Steel type：钢属性
-Poison type：毒属性
-Ground type：地面属性
-Fairy type：妖精属性
+Normal-type：一般系
+Flying-type：飞行系
+fire-type：火系
+Psychic-type：超能系
+water-type：水系
+Bug-type：虫系
+Electric-type：电系
+Rock-type：岩石系
+Grass type：水系
+Ghost-type：幽灵系
+Ice-type：冰系
+Dragon-type：龙系
+Fighting-type：格斗系
+Dark-type：恶系
+Steel-type：钢系
+Poison-type：毒系
+Ground-type：地面系
+Fairy-type：妖精系
 
 // 宝可梦名
 Pokémon：宝可梦
