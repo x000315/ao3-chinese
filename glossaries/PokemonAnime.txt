@@ -1,14 +1,6 @@
 维护者：Senka
-版本号：1.0.1
-更新时间：2025-09-18
-
-禁翻词条
-// 此区域区分大小写，用于保持原文
-Mega
-MEGA
-mega
-N
-Looker
+版本号：1.0.2
+更新时间：2025-09-21
 
 词条
 // 主角团
@@ -36,6 +28,7 @@ Lillie ：莉莉艾
 Nebby：小星云
 Snowy：白晃晃
 Goh：小豪
+Gou：小豪
 Chloe：小春
 
 // 劲敌
@@ -49,7 +42,7 @@ Barry：阿驯
 Drew：小瞬
 Harley：哈利
 Reggie：雷嗣
-Shooty：修帝
+Trip：修帝
 Bianca：白露
 Stephan：肯尼洋
 Cameron：虎彻
@@ -69,7 +62,6 @@ Kieran：乌栗
 
 // 冠军
 Red：赤红
-Blue：青绿
 Lance：渡
 Steven：大吾
 Wallace：米可利
@@ -83,7 +75,7 @@ Geeta：也慈
 Samuel：雪成
 Oak：大木
 Elm：空木
-Philena Ivy：内木
+Ivy：内木
 Birch：小田卷
 Rowan：山梨
 Juniper：红豆杉
@@ -122,38 +114,136 @@ Wicke：碧珂
 Rose：洛兹
 Oleana：奥利薇
 
-// 道馆相关
-Flint：武能
-Lt. Surge：马志士
-Peony：皮欧尼
-Korrina：可尔妮
-Olympia：葛吉花
-
-// 开拓区
-Dahlia：大丽
-
-// 阿罗拉地域
-Mimey：小魔
-Melemele：美乐美乐
-Akala：阿卡拉
-Ula'ula：乌拉乌拉
-Poni：波尼
-Island challenge：诸岛巡礼
-Kahuna：岛屿之王
-Hala：哈拉
-Olivia：丽姿
-Acerola：阿塞萝拉
-Nanu：默丹
-Hapu：哈普乌
-Lanakila：拉纳基拉
-Rotom Dex：洛托姆图鉴
-
 // 路人
 Jenny：君莎
 Joy：乔伊
 Daisy：樱花
 Violet：菖蒲
 Lily：牡丹
+
+// 关都成都
+Pewter：深灰
+Cerulean：华蓝
+Indigo：石英
+Flint：武能
+Lt. Surge：马志士
+Vermilion：枯叶
+Erika：莉佳
+Celadon：玉虹
+Koga：阿桔
+Fuchsia：浅红
+Sabrina：娜姿
+Saffron：金黄
+Blaine：夏伯
+Cinnabar：红莲
+Viridian：常青
+Agatha：菊子
+Lorelei：科拿
+Bruno：希巴
+Karen：梨花
+
+// 橘子
+Orange Islands = 橘子 群岛
+Valencia Island：岱柑岛
+Tangelo：澎柑
+Cissy：敦美
+Mikan：夏干
+Danny：小丹
+Rudy：阿义
+Luana：琉丽
+Drake：勇次
+
+// 城都
+Kurt：钢铁
+Falkner：阿速
+Bugsy：阿笔
+Azalea：桧皮
+Whitney：小茜
+Goldenrod：满金
+Morty：松叶
+Ecruteak：缘朱
+Chuck：阿四
+Cianwood：湛蓝
+Jasmine：阿蜜
+Olivine：浅葱
+Pryce：柳伯
+Mahogany：卡吉
+Clair：小椿
+Blackthorn：烟墨
+
+// 丰缘
+Roxanne：杜娟
+Rustboro：卡那兹
+Brawly：藤树
+Dewford：武斗
+Wattson：铁旋
+Mauville：紫堇
+Flannery：亚莎
+Lavaridge：釜炎
+Norman：千里
+Petalburg：橙华
+Winona：娜琪
+Fortree：茵郁
+Tate：小枫
+Liza：小南
+Mossdeep：绿岭
+Steven Stone：兹伏奇·大吾
+Sidney：花月
+Phoebe：芙蓉
+Glacia：波妮
+
+// 开拓区
+Palmer：桄榔
+Dahlia：大丽
+Arcade Star：轮盘女神
+Arcade：轮盘
+Thorton：捩木
+Darach：石兰
+Castle Valet：城堡管家
+Battle Castle：对战城堡
+Caitlin：嘉德丽雅
+Argenta：青葙
+Noland：达拉
+Greta：黄瓜香
+Tucker：石南
+Lucy：小蓟
+Spenser：郁金
+Anabel：莉拉
+Brandon：神代
+Scott：亚希达
+
+// 神奥
+Roark：瓢太
+Oreburgh：黑金
+Gardenia：菜种
+Eterna：百代
+Maylene：阿李
+Veilstone：帷幕
+Fantina：梅丽莎
+Hearthome：家缘
+Byron：东瓜
+Canalave：水脉
+Candice：小菘
+Snowpoint：雪峰
+Volkner：电次
+Sunyshore：滨海
+
+// 阿罗拉
+Mimey：小魔
+Rotom Dex：洛托姆图鉴
+Melemele：美乐美乐
+Akala：阿卡拉
+Ula'ula：乌拉乌拉
+Poni：波尼
+Island challenge：诸岛巡礼
+Kahuna：岛屿之王
+Kahunas：岛屿之王
+Hala：哈拉
+Olivia：丽姿
+Acerola：阿塞萝拉
+Nanu：默丹
+Hapu：哈普乌
+Lanakila：拉纳基拉
 
 // 招式
 Pound：拍击
@@ -170,7 +260,7 @@ Vise Grip：夹住
 Guillotine：极落钳
 Razor Wind：旋风刀
 Swords Dance：剑舞
-Cut：居合劈
+Cut：居合斩
 Gust：起风
 Wing Attack：翅膀攻击
 Whirlwind：吹飞
@@ -740,7 +830,7 @@ Misty Terrain：薄雾场地
 Electrify：输电
 Play Rough：嬉闹
 Fairy Wind：妖精之风
-Moonblast：月亮之力
+Moonblast：月爆
 Boomburst：爆音波
 Fairy Lock：妖精之锁
 King’s Shield：王者盾牌
@@ -749,7 +839,7 @@ Confide：密语
 Diamond Storm：钻石风暴
 Steam Eruption：蒸汽爆炸
 Hyperspace Hole：异次元洞
-Water Shuriken：飞水手里剑
+Water Shuriken：水手里剑
 Mystical Fire：魔法火焰
 Spiky Shield：尖刺防守
 Aromatic Mist：芳香薄雾
@@ -1068,35 +1158,56 @@ Takeshi：小刚
 Kasumi：小霞
 Haruka：小遥
 
-// 术语
+// 台词
 I choose you：就决定是你了
 Twerp：小鬼头
 Ashy-boy：小智君
 Rival：劲敌
+
+// 比赛术语
 Badge：徽章
 League：联盟
 Pokéball：宝可梦球
-Legendary：传说宝可梦
-legendary Pokémon：传说宝可梦
 Coordinator：协调训练家
 trainer：训练家
+Champion：冠军
+Gym Leader：道馆馆主
+Gym：道馆
+Battle Frontier：对战开拓区
+Frontier：开拓区
+Frontier Brain：开拓头脑
+Kalos Queen：卡洛斯女王
+Showcase：三冠卫星赛
+Rookie Class：新人级初阶赛
+Master Class：大师级高阶赛
+Contest：华丽大赛
+Counter-Shield：反击防护罩
+
+// 剧场版术语
+Legendary：传说宝可梦
+legendary Pokémon：传说宝可梦
+legendary Pokemon：传说宝可梦
+Pokemon：宝可梦
+Chosen One：神子
 Aura：波导
+
+// 日常术语
+Ranger：巡护员
+Poké Puff：宝芙蕾
+Tapus：卡璞守护神们
 malasada：马拉萨达
 malasadas：马拉萨达
 
 // 称号
-Champion：冠军
-Gym Leader = 道馆 馆主
-Chosen One：神子
-Battle Frontier：对战开拓区
-Frontier：开拓区
-Frontier Brain：开拓头脑
 Princess of Hoenn：丰缘舞姬
 Ultra Guardians：究极防卫队
+G-Men：搜查官
+International Police：国际警察
 
 // 系统
 Ash-Greninja：小智版甲贺忍蛙
 bond phenomenon = 羁绊 现象
+key stone：钥石
 Z-Ring：Ｚ手环
 Z-moves：Z招式
 Z-move：Z招式
@@ -1104,16 +1215,12 @@ Z-Crystal：Ｚ纯晶
 Dynamax Band：极巨腕带
 Dynamax：极巨化
 Terastal：太晶化
-Ultra Beasts：究极异兽
+Ultra Beast：究极异兽
+Ultra：究极
 
 // 具体地名
-Pallet Town：真新镇
+Pallet Town = 真新 镇
 City：市
-Pewter：深灰
-Cerulean：华蓝
-Indigo：石英
-Orange Islands = 橘子 群岛
-Valencia Island：岱柑岛
 Prism Tower：棱镜塔
 Lake Acuity：睿智湖
 
@@ -1153,6 +1260,8 @@ Lumiose：密阿雷
 Manalo：玛纳罗
 
 // 属性
+type advantage：属性优势
+type：属性
 Normal-type：一般系
 Flying-type：飞行系
 fire-type：火系
@@ -1161,7 +1270,7 @@ water-type：水系
 Bug-type：虫系
 Electric-type：电系
 Rock-type：岩石系
-Grass type：水系
+Grass-type：草系
 Ghost-type：幽灵系
 Ice-type：冰系
 Dragon-type：龙系
@@ -1171,7 +1280,25 @@ Steel-type：钢系
 Poison-type：毒系
 Ground-type：地面系
 Fairy-type：妖精系
+Flying type：飞行系
+fire type：火系
+Psychic type：超能系
+water type：水系
+Bug type：虫系
+Electric type：电系
+Rock type：岩石系
+Grass type：草系
+Ghost type：幽灵系
+Ice type：冰系
+Dragon type：龙系
+Fighting type：格斗系
+Dark type：恶系
+Steel type：钢系
+Poison type：毒系
+Ground type：地面系
+Fairy type：妖精系
 
+通用词条
 // 宝可梦名
 Pokémon：宝可梦
 Bulbasaur：妙蛙种子
@@ -2199,3 +2326,11 @@ IronBoulder：铁磐岩
 IronCrown：铁头壳
 Terapagos：太乐巴戈斯
 Pecharunt：桃歹郎
+
+禁翻词条
+// 此区域区分大小写，用于保持原文
+Mega
+MEGA
+mega
+N
+Looker
