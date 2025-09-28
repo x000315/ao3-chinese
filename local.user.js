@@ -2,7 +2,7 @@
 // @name         AO3 汉化插件
 // @namespace    https://github.com/V-Lipset/ao3-chinese
 // @description  中文化 AO3 界面，可调用 AI 实现简介、注释、评论以及全文翻译。
-// @version      1.5.2-2025-09-22
+// @version      1.5.3-2025-09-28
 // @author       V-Lipset
 // @license      GPL-3.0
 // @match        https://archiveofourown.org/*
@@ -17,6 +17,8 @@
 // @connect      cdn.jsdelivr.net
 // @connect      translate.googleapis.com
 // @connect      translate-pa.googleapis.com
+// @connect      api.openai.com
+// @connect      api.anthropic.com
 // @connect      open.bigmodel.cn
 // @connect      api.deepseek.com
 // @connect      generativelanguage.googleapis.com
@@ -366,6 +368,8 @@
 	                'Sort direction': '排序方向',
 	                'Descending': '降序',
 	                'Ascending': '升序',
+                    'Filter by title': '按标题筛选',
+                    'Filter by tag': '按标签筛选',
 	                'Work Search': '作品搜索',
 	                'Any Field': '任意字段',
 	                'Date': '日期',
@@ -1002,6 +1006,11 @@
 	                    'p.jump',
 	                    /^\s*\(See the end of the work for\s*(<a href="#work_endnotes">)notes(<\/a>)\s+and\s+(<a href="#children">)other works inspired by this one(<\/a>)\.\)\s*$/,
 	                    '（在作品结尾查看$1注释$2和$3相关衍生作品$4。）'
+	                ],
+	                [
+	                    'main',
+	                    /^\s*<h2>The archive is down for maintenance\.<\/h2>\s*<p>Check our (<a href="https:\/\/www\.otwstatus\.org">status page<\/a>), (<a href="https:\/\/bsky\.app\/profile\/status\.archiveofourown\.org">@status\.archiveofourown\.org<\/a>) on Bluesky or (<a href="https:\/\/ao3org\.tumblr\.com\/">ao3org<\/a>) on Tumblr for updates\.<\/p>\s*$/s,
+	                    '<h2> Archive 正在进行维护。</h2><p>请查看我们的 $1、Bluesky 上的 $2 或 Tumblr 上的 $3，以获取最新动态。</p>'
 	                ],
 
                     // 标签说明
@@ -2377,6 +2386,12 @@
 	            'selector': [
 	                [['input[name="commit"][value="Comment"]', '评论']]
 	            ]
+	        },
+	        'admin_posts_index': {
+	            'static': {},
+	            'innerHTML_regexp': [],
+	            'regexp': [],
+	            'selector': []
 	        },
 	        'works_chapters_show': {
 	            'static': {
@@ -5785,11 +5800,19 @@
 
     /****************** 全局配置区 ******************/
 
+    // 调试模式开关
+    const DEBUG_MODE = false;
+
     // 功能开关
     const FeatureSet = {
         enable_RegExp: GM_getValue('enable_RegExp', true),
         enable_transDesc: GM_getValue('enable_transDesc', false),
     };
+
+    // 自定义服务存储键
+    const CUSTOM_SERVICES_LIST_KEY = 'custom_services_list';
+    const ACTIVE_MODEL_PREFIX_KEY = 'active_model_for_';
+    const ADD_NEW_CUSTOM_SERVICE_ID = 'add_new_custom';
 
     // AI 翻译指令
     const sharedSystemPrompt = `You are a professional translator fluent in Simplified Chinese (简体中文), with particular expertise in translating web novels and online fanfiction.
@@ -5833,18 +5856,18 @@
                 { "role": "user", "content": `Translate the following numbered list to Simplified Chinese（简体中文）:\n\n${numberedText}` }
             ],
             stream: false,
-            temperature: 0,
+            temperature: 1.0,
         };
     };
 
     // 创建一个标准的、兼容OpenAI API的服务配置对象
-    const createStandardApiConfig = ({ name, url, modelGmKey, defaultModel }) => ({
+    const createStandardApiConfig = ({ name, url }) => ({
         name: name,
         url_api: url,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        getRequestData: (paragraphs) => {
-            const model = modelGmKey ? GM_getValue(modelGmKey, defaultModel) : defaultModel;
+        getRequestData: (paragraphs, engineName) => {
+            const model = getCurrentModelId(engineName);
             return createRequestData(
                 model,
                 sharedSystemPrompt,
@@ -5935,6 +5958,20 @@
                     ]);
                 },
             },
+            openai: {
+                name: 'OpenAI',
+                url_api: 'https://api.openai.com/v1/chat/completions',
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                getRequestData: () => ({}),
+            },
+            anthropic: {
+                name: 'Anthropic',
+                url_api: 'https://api.anthropic.com/v1/messages',
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+                getRequestData: () => ({}),
+            },
             zhipu_ai: createStandardApiConfig({
                 name: 'Zhipu AI',
                 url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
@@ -5969,7 +6006,7 @@
                             parts: [{ text: userPrompt }]
                         }],
                         generationConfig: {
-                            temperature: 0,
+                            temperature: 1.0,
                             candidateCount: 1,
                             thinkingConfig: {
                                 thinkingBudget: -1
@@ -6330,6 +6367,197 @@
     }
 
     /**
+     * 聚合所有用户配置和数据以供导出
+     */
+    async function exportAllData() {
+        const allData = {
+            metadata: {
+                exportFormatVersion: "1.0",
+                scriptVersion: GM_info.script.version,
+                exportDate: getShanghaiTimeString(),
+            },
+            data: {
+                staticKeys: {},
+                apiKeys: {},
+                modelSelections: {},
+                customServices: [],
+                glossaries: {},
+                uiState: {}
+            }
+        };
+
+        const staticKeys = [
+            'enable_RegExp', 'enable_transDesc', 'show_fab', 'transEngine',
+            'translation_display_mode', 'ao3_glossary_last_action'
+        ];
+        for (const key of staticKeys) {
+            allData.data.staticKeys[key] = GM_getValue(key);
+        }
+
+        const builtInServices = Object.keys(engineMenuConfig).filter(id => id !== 'google_translate' && id !== 'add_new_custom');
+        for (const serviceId of builtInServices) {
+            allData.data.apiKeys[`${serviceId}_keys_string`] = GM_getValue(`${serviceId}_keys_string`);
+            if (engineMenuConfig[serviceId].modelGmKey) {
+                allData.data.modelSelections[engineMenuConfig[serviceId].modelGmKey] = GM_getValue(engineMenuConfig[serviceId].modelGmKey);
+            }
+        }
+
+        const customServicesList = GM_getValue(CUSTOM_SERVICES_LIST_KEY, []);
+        for (const service of customServicesList) {
+            allData.data.customServices.push({
+                id: service.id,
+                name: service.name,
+                url: service.url,
+                apiKey: GM_getValue(`${service.id}_keys_string`),
+                modelsRaw: service.modelsRaw,
+                selectedModel: GM_getValue(`${ACTIVE_MODEL_PREFIX_KEY}${service.id}`),
+                lastAction: GM_getValue(`custom_service_last_action_${service.id}`)
+            });
+        }
+
+        allData.data.glossaries = {
+            local: GM_getValue(LOCAL_GLOSSARY_STRING_KEY),
+            forbidden: GM_getValue(LOCAL_FORBIDDEN_STRING_KEY),
+            postReplace: GM_getValue(POST_REPLACE_STRING_KEY),
+            onlineMetadata: GM_getValue(GLOSSARY_METADATA_KEY),
+            lastSelectedOnline: GM_getValue(LAST_SELECTED_GLOSSARY_KEY)
+        };
+
+        allData.data.uiState = {
+            fabPosition: GM_getValue('ao3_fab_position'),
+            panelPosition: GM_getValue('ao3_panel_position')
+        };
+
+        return allData;
+    }
+
+    /**
+     * 校验并导入用户配置数据，并自动同步在线术语表
+     */
+    async function importAllData(jsonData, syncPanelStateCallback) {
+        if (!jsonData || !jsonData.metadata || !jsonData.data || jsonData.metadata.exportFormatVersion !== "1.0") {
+            return { success: false, message: "文件格式无效或版本不兼容。" };
+        }
+
+        const { data } = jsonData;
+
+        if (data.staticKeys) {
+            for (const [key, value] of Object.entries(data.staticKeys)) {
+                if (value !== undefined) GM_setValue(key, value);
+            }
+        }
+
+        if (data.apiKeys) {
+            for (const [key, value] of Object.entries(data.apiKeys)) {
+                if (value !== undefined) {
+                    GM_setValue(key, value);
+                }
+            }
+        }
+        if (data.modelSelections) {
+            for (const [key, value] of Object.entries(data.modelSelections)) {
+                if (value !== undefined) GM_setValue(key, value);
+            }
+        }
+
+        if (data.customServices && Array.isArray(data.customServices)) {
+            const oldServices = GM_getValue(CUSTOM_SERVICES_LIST_KEY, []);
+            oldServices.forEach(s => {
+                GM_deleteValue(`${s.id}_keys_string`);
+                GM_deleteValue(`${s.id}_keys_array`);
+                GM_deleteValue(`${ACTIVE_MODEL_PREFIX_KEY}${s.id}`);
+                GM_deleteValue(`custom_service_last_action_${s.id}`);
+            });
+
+            const newServiceList = [];
+            for (const service of data.customServices) {
+                newServiceList.push({
+                    id: service.id,
+                    name: service.name,
+                    url: service.url,
+                    modelsRaw: service.modelsRaw,
+                    models: String(service.modelsRaw).replace(/[，]/g, ',').split(',').map(m => m.trim()).filter(Boolean)
+                });
+                GM_setValue(`${service.id}_keys_string`, service.apiKey);
+                GM_setValue(`${ACTIVE_MODEL_PREFIX_KEY}${service.id}`, service.selectedModel);
+                GM_setValue(`custom_service_last_action_${service.id}`, service.lastAction);
+            }
+            GM_setValue(CUSTOM_SERVICES_LIST_KEY, newServiceList);
+        }
+
+        if (data.glossaries) {
+            const { local, forbidden, postReplace, onlineMetadata, lastSelectedOnline } = data.glossaries;
+            if (local !== undefined) GM_setValue(LOCAL_GLOSSARY_STRING_KEY, local);
+            if (forbidden !== undefined) GM_setValue(LOCAL_FORBIDDEN_STRING_KEY, forbidden);
+            if (postReplace !== undefined) GM_setValue(POST_REPLACE_STRING_KEY, postReplace);
+            if (onlineMetadata !== undefined) GM_setValue(GLOSSARY_METADATA_KEY, onlineMetadata);
+            if (lastSelectedOnline !== undefined) GM_setValue(LAST_SELECTED_GLOSSARY_KEY, lastSelectedOnline);
+        }
+
+        if (data.uiState) {
+            if (data.uiState.fabPosition) GM_setValue('ao3_fab_position', data.uiState.fabPosition);
+            if (data.uiState.panelPosition) GM_setValue('ao3_panel_position', data.uiState.panelPosition);
+        }
+
+        synchronizeAllSettings(syncPanelStateCallback);
+
+        let syncSummary = "";
+        const onlineMetadata = data.glossaries?.onlineMetadata;
+        if (onlineMetadata && typeof onlineMetadata === 'object' && Object.keys(onlineMetadata).length > 0) {
+            const downloadPromises = Object.keys(onlineMetadata).map(url => importOnlineGlossary(url, { silent: true }));
+            const results = await Promise.allSettled(downloadPromises);
+
+            const successful = results.filter(r => r.status === 'fulfilled' && r.value.success);
+            const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success));
+
+            syncSummary = `在线术语表同步完成：${successful.length} 个成功`;
+            if (failed.length > 0) {
+                syncSummary += `，${failed.length} 个失败。`;
+                console.error("以下术语表同步失败:", failed.map(r => r.status === 'fulfilled' ? r.value : r.reason));
+            }
+        }
+
+        const finalMessage = "配置已成功导入！" + (syncSummary ? `\n${syncSummary}` : "");
+        return { success: true, message: finalMessage };
+    }
+
+    /**
+     * 同步函数，用于在设置变更后激活所有数据和状态
+     */
+    function synchronizeAllSettings(syncPanelStateCallback) {
+        const postReplaceRaw = GM_getValue(POST_REPLACE_STRING_KEY, '');
+        processAndSavePostReplaceRules(postReplaceRaw);
+
+        const forbiddenRaw = GM_getValue(LOCAL_FORBIDDEN_STRING_KEY, '');
+        const forbiddenArray = forbiddenRaw.split(/[，,]/).map(t => t.trim()).filter(Boolean);
+        GM_setValue(LOCAL_FORBIDDEN_TERMS_KEY, forbiddenArray);
+
+        const allServiceIds = [
+            ...Object.keys(engineMenuConfig),
+            ...GM_getValue(CUSTOM_SERVICES_LIST_KEY, []).map(s => s.id)
+        ];
+        for (const serviceId of new Set(allServiceIds)) {
+            if (serviceId === 'google_translate' || serviceId === ADD_NEW_CUSTOM_SERVICE_ID) continue;
+            const stringKey = `${serviceId}_keys_string`;
+            const arrayKey = `${serviceId}_keys_array`;
+            const keysString = GM_getValue(stringKey);
+            if (typeof keysString === 'string') {
+                const keysArray = keysString.replace(/[，]/g, ',').split(',').map(k => k.trim()).filter(Boolean);
+                GM_setValue(arrayKey, keysArray);
+            }
+        }
+
+        invalidateGlossaryCache();
+
+        if (typeof syncPanelStateCallback === 'function') {
+            syncPanelStateCallback();
+        }
+
+        const displayMode = GM_getValue('translation_display_mode', 'bilingual');
+        applyDisplayModeChange(displayMode);
+    }
+
+    /**
      * 设置面板的结构与样式
      */
     function createSettingsPanelUI() {
@@ -6367,7 +6595,6 @@
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                background-color: #f5f5f5;
             }
             .settings-panel-header-title {
                 display: flex;
@@ -6504,9 +6731,10 @@
                 transform: translateY(-50%) rotate(180deg);
             }
 			.settings-action-button-inline:focus,
-				.online-glossary-delete-btn:focus {
-					outline: none;
-				}
+            .online-glossary-delete-btn:focus,
+            .custom-dropdown-menu li .item-action-btn:focus {
+                outline: none;
+            }
 
             .input-wrapper { position: relative; }
             .input-wrapper .settings-input { padding-right: 52px !important; }
@@ -6578,6 +6806,8 @@
                 transform-origin: top center;
                 transition: opacity 0.15s ease-out, transform 0.15s ease-out;
                 box-sizing: border-box;
+                --ao3-trans-primary-color: #1976d2;
+                --ao3-trans-danger-color: #ff0000;
             }
             .custom-dropdown-menu.visible {
                 opacity: 1;
@@ -6595,15 +6825,45 @@
                 cursor: pointer;
                 font-size: 15px;
                 transition: background-color 0.2s ease;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 8px;
             }
             .custom-dropdown-menu li:hover {
                 background-color: #f5f5f5;
             }
             .custom-dropdown-menu li.selected {
                 background-color: #e3f2fd;
+            }
+            .custom-dropdown-menu li .item-text {
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                flex-grow: 1;
+            }
+            .custom-dropdown-menu li .item-actions {
+                display: flex;
+                gap: 8px;
+                flex-shrink: 0;
+            }
+            .custom-dropdown-menu li .item-action-btn {
+                font-size: 13px;
+                font-weight: 500;
+                background: none;
+                border: none;
+                padding: 0;
+                cursor: pointer;
+            }
+            .custom-dropdown-menu li .item-action-btn.edit {
+                color: var(--ao3-trans-primary-color);
+            }
+            .custom-dropdown-menu li .item-action-btn.delete,
+            .custom-dropdown-menu li .item-action-btn.toggle-glossary {
+                color: var(--ao3-trans-primary-color);
+            }
+            .custom-dropdown-menu li .item-action-btn.delete[data-confirming="true"] {
+                color: var(--ao3-trans-danger-color);
             }
             .custom-dropdown-menu ul::-webkit-scrollbar {
                 width: 5px;
@@ -6614,6 +6874,81 @@
             .custom-dropdown-menu ul::-webkit-scrollbar-thumb {
                 background: rgba(0, 0, 0, 0.2);
                 border-radius: 3px;
+            }
+            #custom-service-url-notice {
+                font-size: 12px;
+                color: #555;
+                padding: 8px 12px;
+                background-color: #f0f0f0;
+                border-radius: 4px;
+                margin-top: -8px;
+            }
+            #custom-service-url-notice a {
+                color: var(--ao3-trans-primary-color);
+                text-decoration: none;
+            }
+            #custom-service-url-notice a:hover {
+                text-decoration: underline;
+            }
+            #glossary-manage-list {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                padding: 8px;
+                max-height: 150px;
+                overflow-y: auto;
+            }
+            .glossary-manage-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 14px;
+            }
+            .glossary-manage-item .name {
+                flex-grow: 1;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                margin-right: 8px;
+            }
+            .glossary-manage-item .actions {
+                display: flex;
+                gap: 8px;
+                flex-shrink: 0;
+            }
+            .glossary-manage-item .actions button {
+                font-size: 13px;
+                font-weight: 500;
+                background: none;
+                border: none;
+                padding: 2px 4px;
+                cursor: pointer;
+                color: var(--ao3-trans-primary-color);
+            }
+            .glossary-manage-item .actions .delete-btn[data-confirming="true"] {
+                color: var(--ao3-trans-danger-color);
+            }
+            .data-sync-actions-container {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 8px 12px 0;
+                margin-top: -8px;
+            }
+            .data-sync-action-btn {
+                background: none;
+                border: none;
+                color: var(--ao3-trans-primary-color);
+                font-size: 13px;
+                font-weight: 500;
+                cursor: pointer;
+                padding: 2px 4px;
+                text-align: center;
+            }
+            .data-sync-action-btn:focus {
+                outline: none;
             }
         `);
 
@@ -6641,21 +6976,23 @@
                 </div>
 
                 <div class="settings-group settings-group-select">
-                    <select id="setting-trans-engine" class="settings-control settings-select"></select>
-                    <label for="setting-trans-engine" class="settings-label">翻译服务</label>
-                </div>
-
-                <div class="settings-group settings-group-select" id="setting-model-group" style="display: none;">
-                    <select id="setting-trans-model" class="settings-control settings-select"></select>
-                    <label for="setting-trans-model" class="settings-label">使用模型</label>
-                </div>
-
-                <div class="settings-group settings-group-select">
-                    <select id="setting-display-mode" class="settings-control settings-select">
+                    <select id="setting-display-mode" class="settings-control settings-select custom-styled-select">
                         <option value="bilingual">双语对照</option>
                         <option value="translation_only">仅译文</option>
                     </select>
                     <label for="setting-display-mode" class="settings-label">显示模式</label>
+                </div>
+
+                <div class="settings-group settings-group-select">
+                    <select id="setting-trans-engine" class="settings-control settings-select custom-styled-select"></select>
+                    <label for="setting-trans-engine" class="settings-label">翻译服务</label>
+                </div>
+
+                <div id="custom-service-container" style="display: none; flex-direction: column; gap: 16px;"></div>
+
+                <div class="settings-group settings-group-select" id="setting-model-group" style="display: none;">
+                    <select id="setting-trans-model" class="settings-control settings-select custom-styled-select"></select>
+                    <label for="setting-trans-model" class="settings-label">使用模型</label>
                 </div>
 
                 <div class="settings-group static-label" id="api-key-group">
@@ -6667,15 +7004,21 @@
                 </div>
 
                 <div class="settings-group static-label settings-group-select">
-                    <select id="setting-glossary-actions" class="settings-control settings-select">
+                    <select id="setting-glossary-actions" class="settings-control settings-select custom-styled-select">
                         <option value="">请选择一个功能</option>
                         <option value="local">设置本地术语表</option>
                         <option value="forbidden">设置禁翻术语表</option>
                         <option value="import">导入在线术语表</option>
                         <option value="manage">管理在线术语表</option>
                         <option value="post_replace">译文后处理替换</option>
+                        <option value="data_sync">数据导入与导出</option>
                     </select>
-                    <label for="setting-glossary-actions" class="settings-label">管理 AI 翻译术语表</label>
+                    <label for="setting-glossary-actions" class="settings-label">更多功能</label>
+                </div>
+
+                <div id="data-sync-actions-container" class="data-sync-actions-container" style="display: none;">
+                    <button id="btn-import-data" class="data-sync-action-btn">数据导入</button>
+                    <button id="btn-export-data" class="data-sync-action-btn">数据导出</button>
                 </div>
 
                 <div id="editable-section-glossary-local" class="settings-group static-label editable-section">
@@ -6687,7 +7030,7 @@
                 </div>
                 <div id="editable-section-glossary-forbidden" class="settings-group static-label editable-section">
                     <div class="input-wrapper">
-                        <input type="text" id="setting-input-glossary-forbidden" class="settings-control settings-input" placeholder="原文1，原文2" spellcheck="false">
+                        <input type="text" id="setting-input-glossary-forbidden" class="settings-control settings-input" placeholder="原文1，原文2，原文3" spellcheck="false">
                         <label for="setting-input-glossary-forbidden" class="settings-label">禁翻术语表</label>
                         <button id="setting-btn-glossary-forbidden-save" class="settings-action-button-inline">保存</button>
                     </div>
@@ -6701,7 +7044,7 @@
                 </div>
                 <div id="editable-section-glossary-manage" class="settings-group static-label editable-section online-glossary-manager">
                     <div class="settings-group settings-group-select">
-                        <select id="setting-select-glossary-manage" class="settings-control settings-select"></select>
+                        <select id="setting-select-glossary-manage" class="settings-control settings-select custom-styled-select"></select>
                         <label for="setting-select-glossary-manage" class="settings-label">已导入的术语表</label>
                     </div>
                     <div id="online-glossary-details-container" style="display: none;">
@@ -6721,10 +7064,6 @@
             </div>
         `;
 
-        panel.querySelectorAll('.settings-select').forEach(sel => {
-            sel.parentElement.classList.add('settings-group-select');
-        });
-
         document.body.appendChild(panel);
 
         return {
@@ -6739,6 +7078,7 @@
             apiKeyGroup: panel.querySelector('#api-key-group'),
             apiKeyInput: panel.querySelector('#setting-input-apikey'),
             apiKeySaveBtn: panel.querySelector('#setting-btn-apikey-save'),
+            customServiceContainer: panel.querySelector('#custom-service-container'),
             glossaryActionsSelect: panel.querySelector('#setting-glossary-actions'),
             editableSections: panel.querySelectorAll('.editable-section'),
             glossaryLocalSection: panel.querySelector('#editable-section-glossary-local'),
@@ -6758,6 +7098,479 @@
             postReplaceSection: panel.querySelector('#editable-section-post-replace'),
             postReplaceInput: panel.querySelector('#setting-input-post-replace'),
             postReplaceSaveBtn: panel.querySelector('#setting-btn-post-replace-save'),
+            dataSyncActionsContainer: panel.querySelector('#data-sync-actions-container'),
+            importDataBtn: panel.querySelector('#btn-import-data'),
+            exportDataBtn: panel.querySelector('#btn-export-data'),
+        };
+    }
+
+    /**
+     * 显示一个自定义的确认模态框
+     */
+    function showCustomConfirm(message, title = '请确认') {
+        return new Promise((resolve, reject) => {
+            if (document.getElementById('ao3-custom-confirm-overlay')) {
+                return reject(new Error('已有确认框正在显示中。'));
+            }
+
+            GM_addStyle(`
+                #ao3-custom-confirm-overlay {
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                    background-color: rgba(0, 0, 0, 0.5);
+                    z-index: 2147483647; display: flex; align-items: center; justify-content: center;
+                }
+                #ao3-custom-confirm-modal {
+                    background-color: #fff; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+                    width: 90%; max-width: 400px; overflow: hidden;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                }
+                .ao3-custom-confirm-header {
+                    padding: 12px 16px; border-bottom: 1px solid #e0e0e0;
+                    text-align: center;
+                }
+                .ao3-custom-confirm-header h3 {
+                    margin: 0; font-size: 16px; font-weight: 600; color: #000;
+                }
+                .ao3-custom-confirm-body {
+                    padding: 16px; font-size: 14px; line-height: 1.6; color: #000;
+                    white-space: pre-wrap;
+                }
+                .ao3-custom-confirm-body p {
+                    text-indent: 2em;
+                    margin: 0;
+                }
+                .ao3-custom-confirm-footer {
+                    padding: 12px 16px; background-color: #fff;
+                    display: flex; justify-content: flex-end; gap: 12px;
+                }
+                .ao3-custom-confirm-btn {
+                    padding: 8px 16px; border: none; border-radius: 6px;
+                    font-size: 14px; font-weight: 500; cursor: pointer;
+                    background: none !important;
+                    background-color: transparent !important;
+                    color: #000;
+                }
+                .ao3-custom-confirm-btn:focus {
+                    outline: none;
+                }
+            `);
+
+            const overlay = document.createElement('div');
+            overlay.id = 'ao3-custom-confirm-overlay';
+
+            const modal = document.createElement('div');
+            modal.id = 'ao3-custom-confirm-modal';
+            modal.innerHTML = `
+                <div class="ao3-custom-confirm-header"><h3>${title}</h3></div>
+                <div class="ao3-custom-confirm-body">${message.split('\n').map(line => `<p>${line}</p>`).join('')}</div>
+                <div class="ao3-custom-confirm-footer">
+                    <button class="ao3-custom-confirm-btn cancel">取消</button>
+                    <button class="ao3-custom-confirm-btn confirm">确定</button>
+                </div>
+            `;
+
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+
+            const cleanup = () => {
+                overlay.remove();
+            };
+
+            const confirmBtn = modal.querySelector('.confirm');
+            const cancelBtn = modal.querySelector('.cancel');
+
+            confirmBtn.addEventListener('click', () => {
+                cleanup();
+                resolve();
+            });
+
+            cancelBtn.addEventListener('click', () => {
+                cleanup();
+                reject(new Error('User cancelled.'));
+            });
+
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    cleanup();
+                    reject(new Error('User cancelled by clicking overlay.'));
+                }
+            });
+        });
+    }
+
+    /**
+     * 创建并管理自定义翻译服务的 UI 和逻辑
+     */
+    function createCustomServiceManager(panelElements, syncPanelStateCallback) {
+        const { customServiceContainer, modelGroup, modelSelect, apiKeyGroup } = panelElements;
+        let currentServiceId = null;
+        let currentEditSection = 'name';
+        let isPendingCreation = false;
+        let pendingServiceData = {};
+        const CUSTOM_URL_FIRST_SAVE_DONE = 'custom_url_first_save_done';
+
+        const getServices = () => GM_getValue(CUSTOM_SERVICES_LIST_KEY, []);
+        const setServices = (services) => GM_setValue(CUSTOM_SERVICES_LIST_KEY, services);
+
+        const ensureServiceExists = () => {
+            if (!isPendingCreation) return currentServiceId;
+            const services = getServices();
+            const newService = { ...pendingServiceData, id: `custom_${Date.now()}` };
+            services.push(newService);
+            setServices(services);
+
+            isPendingCreation = false;
+            currentServiceId = newService.id;
+            GM_setValue('transEngine', currentServiceId);
+
+            return newService.id;
+        };
+
+        const saveServiceField = (field, value) => {
+            const serviceId = isPendingCreation ? ensureServiceExists() : currentServiceId;
+
+            if (field === 'apiKey') {
+                GM_setValue(`${serviceId}_keys_string`, value);
+            } else {
+                const services = getServices();
+                const serviceIndex = services.findIndex(s => s.id === serviceId);
+                if (serviceIndex > -1) {
+                    services[serviceIndex][field] = value;
+                    setServices(services);
+                }
+            }
+            return serviceId;
+        };
+
+        const saveAndSyncCustomServiceField = (field, value) => {
+            const serviceId = saveServiceField(field, value);
+            synchronizeAllSettings(syncPanelStateCallback);
+            triggerModelFetchIfReady(serviceId);
+        };
+
+        const triggerModelFetchIfReady = (serviceId) => {
+            if (!serviceId) return;
+            const services = getServices();
+            const service = services.find(s => s.id === serviceId);
+            if (!service) return;
+
+            const apiKey = (GM_getValue(`${serviceId}_keys_array`, [])[0] || '').trim();
+            const modelsExist = service.models && service.models.length > 0;
+
+            if (service.url && apiKey && !modelsExist) {
+                fetchModelsForService(serviceId, service.url);
+            }
+        };
+
+        const fetchModelsForService = async (serviceId, url) => {
+            const serviceName = (getServices().find(s => s.id === serviceId) || {}).name || '新服务';
+            try {
+                const apiKey = (GM_getValue(`${serviceId}_keys_array`, [])[0] || '').trim();
+                if (!apiKey) return;
+
+                const modelsUrl = url.replace(/\/chat\/?(completions)?\/?$/, '') + '/models';
+
+                const response = await new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: modelsUrl,
+                        headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+                        responseType: 'json',
+                        timeout: 15000,
+                        onload: res => {
+                            if (res.status === 200 && res.response) {
+                                resolve(res.response);
+                            } else {
+                                reject(new Error(`服务器返回状态 ${res.status}。请检查接口地址和 API Key。`));
+                            }
+                        },
+                        onerror: () => reject(new Error('网络请求失败，请检查您的网络连接和浏览器控制台。')),
+                        ontimeout: () => reject(new Error('请求超时。'))
+                    });
+                });
+
+                const models = getNestedProperty(response, 'data');
+                if (!Array.isArray(models) || models.length === 0) {
+                    throw new Error('API 返回的数据格式不正确或模型列表为空。');
+                }
+
+                const modelIds = models.map(m => m.id).filter(Boolean);
+                if (modelIds.length === 0) {
+                    throw new Error('未能从 API 响应中提取任何有效的模型 ID。');
+                }
+
+                saveServiceField('models', modelIds);
+                saveServiceField('modelsRaw', modelIds.join(', '));
+                notifyAndLog(`成功为“${serviceName}”获取 ${modelIds.length} 个可用模型！`, '操作成功');
+
+                const actionSelect = customServiceContainer.querySelector('#custom-service-action-select');
+                if (actionSelect) {
+                    actionSelect.value = 'models';
+                    actionSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                if (syncPanelStateCallback) {
+                    syncPanelStateCallback();
+                }
+
+            } catch (error) {
+                console.error('[模型获取] 失败:', error);
+                notifyAndLog(`自动获取模型失败：${error.message}`, '操作失败', 'error');
+            }
+        };
+
+        function renderEditMode(serviceId) {
+            currentServiceId = serviceId;
+
+            if (serviceId) {
+                const lastActionKey = `custom_service_last_action_${serviceId}`;
+                currentEditSection = GM_getValue(lastActionKey, 'name');
+            }
+
+            let serviceData;
+            if (isPendingCreation) {
+                serviceData = pendingServiceData;
+            } else {
+                const services = getServices();
+                serviceData = services.find(s => s.id === serviceId) || {};
+            }
+
+            customServiceContainer.innerHTML = `
+                <div class="settings-group static-label settings-group-select">
+                    <select id="custom-service-action-select" class="settings-control settings-select custom-styled-select">
+                        <option value="name">设置服务名称</option>
+                        <option value="url">设置接口地址</option>
+                        <option value="apiKey">设置 API Key</option>
+                        <option value="models">设置模型 ID</option>
+                    </select>
+                    <label for="custom-service-action-select" class="settings-label">自定义翻译服务</label>
+                </div>
+                <div id="custom-service-editor"></div>
+            `;
+            customServiceContainer.style.display = 'flex';
+
+            const actionSelect = customServiceContainer.querySelector('#custom-service-action-select');
+            actionSelect.value = currentEditSection;
+
+            renderEditSection(serviceData);
+        }
+
+        const renderEditSection = (service) => {
+            const editorDiv = customServiceContainer.querySelector('#custom-service-editor');
+            editorDiv.innerHTML = '';
+            apiKeyGroup.style.display = 'none';
+
+            const createInputSection = (id, label, placeholder, value, fieldName) => {
+                const section = document.createElement('div');
+                section.className = 'settings-group static-label';
+                section.innerHTML = `
+                    <div class="input-wrapper">
+                        <input type="text" id="${id}" class="settings-control settings-input" placeholder="${placeholder}" spellcheck="false">
+                        <label for="${id}" class="settings-label">${label}</label>
+                        <button class="settings-action-button-inline">保存</button>
+                    </div>
+                `;
+                const input = section.querySelector('input');
+                input.value = value;
+                section.querySelector('button').addEventListener('click', async () => {
+                    const trimmedValue = input.value.trim();
+                    if (fieldName === 'url' && trimmedValue && !trimmedValue.startsWith('http')) {
+                        notifyAndLog('接口地址格式不正确，必须以 http 或 https 开头。', '保存失败', 'error');
+                        return;
+                    }
+                    saveAndSyncCustomServiceField(fieldName, trimmedValue);
+
+                    if (fieldName === 'url') {
+                        const isFirstSaveEver = !GM_getValue(CUSTOM_URL_FIRST_SAVE_DONE, false);
+                        if (isFirstSaveEver) {
+                            GM_setValue(CUSTOM_URL_FIRST_SAVE_DONE, true);
+                            const confirmationMessage = `您正在添加一个自定义翻译服务接口地址。\n为了保护您的浏览器安全，油猴脚本要求您为这个新地址手动授权。\n您需要将刚才输入的接口地址域名添加到脚本的 “域名白名单” 中。这是一个首次设置时必须进行的一次性操作。\n点击 “确定” ，将跳转到一份图文版操作教程；点击 “取消” ，则不会进行跳转。\n此提示仅显示一次，是否跳转到教程页面？`;
+                            try {
+                                await showCustomConfirm(confirmationMessage, '安全授权');
+                                window.open('https://v-lipset.github.io/ao3-chinese/guide/whitelist.html', '_blank');
+                            } catch (e) {}
+                        }
+                    }
+                });
+                return section;
+            };
+
+            switch (currentEditSection) {
+                case 'name':
+                    editorDiv.appendChild(createInputSection('custom-service-name-input', '服务名称', '', service.name || '', 'name'));
+                    break;
+                case 'url':
+                    editorDiv.appendChild(createInputSection('custom-service-url-input', '接口地址', 'https://api.example.com/v1/chat/completions', service.url || '', 'url'));
+                    break;
+                case 'models':
+                    editorDiv.dataset.mode = 'select';
+                    renderModelEditor(service);
+                    break;
+                case 'apiKey':
+                    const serviceId = currentServiceId || (isPendingCreation ? 'pending_custom' : null);
+                    const apiKeyString = serviceId === 'pending_custom' ? '' : GM_getValue(`${serviceId}_keys_string`, '');
+                    const serviceName = service.name || (isPendingCreation ? '新服务' : '自定义服务');
+                    editorDiv.appendChild(createInputSection('custom-service-apikey-input', `设置 ${serviceName} API Key`, 'Key 1，Key 2，Key 3', apiKeyString, 'apiKey'));
+                    break;
+            }
+            panelElements.panel.querySelectorAll('.settings-control').forEach(el => {
+                if (el.value) el.classList.add('has-value');
+            });
+        };
+
+        const renderModelEditor = (service) => {
+            const editorDiv = customServiceContainer.querySelector('#custom-service-editor');
+            editorDiv.innerHTML = '';
+            const modelsRaw = service.modelsRaw || (service.models || []).join(', ');
+
+            if (editorDiv.dataset.mode === 'edit' || !modelsRaw) {
+                const section = document.createElement('div');
+                section.className = 'settings-group static-label';
+                section.innerHTML = `
+                    <div class="input-wrapper">
+                        <input type="text" id="custom-service-models-input" class="settings-control settings-input" placeholder="model 1，model 2，model 3" spellcheck="false">
+                        <label for="custom-service-models-input" class="settings-label">模型 ID</label>
+                        <button class="settings-action-button-inline">保存</button>
+                    </div>
+                `;
+                const input = section.querySelector('input');
+                input.value = modelsRaw;
+                section.querySelector('button').addEventListener('click', () => {
+                    const rawValue = input.value;
+                    const normalizedModels = rawValue.replace(/[，]/g, ',').split(',').map(m => m.trim()).filter(Boolean);
+                    saveAndSyncCustomServiceField('models', normalizedModels);
+                    saveAndSyncCustomServiceField('modelsRaw', rawValue);
+                    editorDiv.dataset.mode = 'select';
+                });
+                editorDiv.appendChild(section);
+            } else {
+                const section = document.createElement('div');
+                section.className = 'settings-group static-label settings-group-select';
+                const select = document.createElement('select');
+                select.id = 'custom-service-models-select';
+                select.className = 'settings-control settings-select custom-styled-select';
+                (service.models || []).forEach(modelId => {
+                    const option = document.createElement('option');
+                    option.value = modelId;
+                    option.textContent = modelId;
+                    select.appendChild(option);
+                });
+                const editOption = document.createElement('option');
+                editOption.value = 'edit_models';
+                editOption.textContent = '编辑模型 ID';
+                select.appendChild(editOption);
+                section.innerHTML = `<label for="custom-service-models-select" class="settings-label">模型 ID</label>`;
+                section.prepend(select);
+
+                const activeModel = GM_getValue(`${ACTIVE_MODEL_PREFIX_KEY}${currentServiceId}`, (service.models || [])[0]);
+                if (activeModel) {
+                    select.value = activeModel;
+                }
+
+                select.addEventListener('change', () => {
+                    if (select.value === 'edit_models') {
+                        editorDiv.dataset.mode = 'edit';
+                        renderModelEditor(service);
+                    } else {
+                        GM_setValue(`${ACTIVE_MODEL_PREFIX_KEY}${currentServiceId}`, select.value);
+                    }
+                });
+                editorDiv.appendChild(section);
+            }
+            panelElements.panel.querySelectorAll('.settings-control').forEach(el => {
+                if (el.value) el.classList.add('has-value');
+            });
+        };
+
+        return {
+            enterEditMode: (serviceId) => {
+                isPendingCreation = false;
+                renderEditMode(serviceId);
+            },
+            startPendingCreation: () => {
+                isPendingCreation = true;
+                currentEditSection = 'name';
+                const services = getServices();
+                const defaultNamePrefix = '默认 ';
+                const defaultNames = services.filter(s => s.name.startsWith(defaultNamePrefix))
+                                             .map(s => parseInt(s.name.substring(defaultNamePrefix.length), 10))
+                                             .filter(n => !isNaN(n));
+                let nextNum = 1;
+                while (defaultNames.includes(nextNum)) {
+                    nextNum++;
+                }
+
+                pendingServiceData = {
+                    name: `${defaultNamePrefix}${nextNum}`,
+                    url: '',
+                    models: [],
+                    modelsRaw: ''
+                };
+
+                modelGroup.style.display = 'none';
+                apiKeyGroup.style.display = 'none';
+                renderEditMode(null);
+            },
+            isPending: () => isPendingCreation,
+            cancelPending: () => {
+                isPendingCreation = false;
+                pendingServiceData = {};
+            },
+            updatePendingSection: (newAction) => {
+                if (isPendingCreation) {
+                    currentEditSection = newAction;
+                    renderEditMode(null);
+                }
+            },
+            renderDisplayModeModelSelect: (serviceId) => {
+                const services = getServices();
+                const service = services.find(s => s.id === serviceId);
+                if (!service) return;
+
+                const models = service.models || [];
+                modelSelect.innerHTML = '';
+
+                if (models.length === 0) {
+                    const noModelOption = document.createElement('option');
+                    noModelOption.disabled = true;
+                    noModelOption.selected = true;
+                    noModelOption.textContent = '暂无模型';
+                    modelSelect.appendChild(noModelOption);
+                    modelSelect.disabled = true;
+                } else {
+                    models.forEach(modelId => {
+                        const option = document.createElement('option');
+                        option.value = modelId;
+                        option.textContent = modelId;
+                        modelSelect.appendChild(option);
+                    });
+                    modelSelect.disabled = false;
+                    const activeModel = GM_getValue(`${ACTIVE_MODEL_PREFIX_KEY}${serviceId}`, models[0]);
+                    modelSelect.value = activeModel;
+                }
+                modelGroup.style.display = 'block';
+            },
+            deleteService: (serviceId) => {
+                let services = getServices();
+                services = services.filter(s => s.id !== serviceId);
+                setServices(services);
+
+                GM_deleteValue(`${serviceId}_keys_string`);
+                GM_deleteValue(`${serviceId}_keys_array`);
+                GM_deleteValue(`${serviceId}_key_index`);
+                GM_deleteValue(`${ACTIVE_MODEL_PREFIX_KEY}${serviceId}`);
+                GM_deleteValue(`custom_service_last_action_${serviceId}`);
+
+                const currentEngine = getValidEngineName();
+                if (currentEngine === serviceId) {
+                    GM_setValue('transEngine', 'google_translate');
+                }
+
+                if (syncPanelStateCallback) {
+                    syncPanelStateCallback();
+                }
+                notifyAndLog('自定义服务已删除。');
+            }
         };
     }
 
@@ -6767,14 +7580,15 @@
     function initializeSettingsPanelLogic(panelElements, rerenderMenuCallback, onPanelCloseCallback) {
         const {
             panel, closeBtn, header, masterSwitch, engineSelect, modelGroup, modelSelect, displayModeSelect,
-            apiKeyGroup, apiKeyInput, apiKeySaveBtn,
+            apiKeyGroup, apiKeyInput, apiKeySaveBtn, customServiceContainer,
             glossaryActionsSelect, editableSections,
             glossaryLocalSection, glossaryLocalInput, glossaryLocalSaveBtn,
             glossaryForbiddenSection, glossaryForbiddenInput, glossaryForbiddenSaveBtn,
             glossaryImportSection, glossaryImportUrlInput, glossaryImportSaveBtn,
             glossaryManageSection, glossaryManageSelect, glossaryManageDetailsContainer,
             glossaryManageInfo, glossaryManageDeleteBtn,
-            postReplaceSection, postReplaceInput, postReplaceSaveBtn
+            postReplaceSection, postReplaceInput, postReplaceSaveBtn,
+            dataSyncActionsContainer, importDataBtn, exportDataBtn
         } = panelElements;
 
         const PANEL_POSITION_KEY = 'ao3_panel_position';
@@ -6782,6 +7596,76 @@
         let isDragging = false;
         let origin = { x: 0, y: 0 }, startPosition = { x: 0, y: 0 };
         let activeDropdown = null;
+
+        const populateEngineSelect = () => {
+            engineSelect.innerHTML = '';
+            const customServices = GM_getValue(CUSTOM_SERVICES_LIST_KEY, []);
+
+            const createOption = (engineId, config) => {
+                const option = document.createElement('option');
+                option.value = engineId;
+                option.textContent = config.displayName;
+                return option;
+            };
+
+            engineSelect.appendChild(createOption('google_translate', engineMenuConfig['google_translate']));
+
+            const sortedBuiltInServices = Object.keys(engineMenuConfig)
+                .filter(id => id !== 'google_translate' && id !== ADD_NEW_CUSTOM_SERVICE_ID)
+                .sort((a, b) => engineMenuConfig[a].displayName.localeCompare(engineMenuConfig[b].displayName));
+
+            sortedBuiltInServices.forEach(id => {
+                engineSelect.appendChild(createOption(id, engineMenuConfig[id]));
+            });
+
+            customServices.forEach(service => {
+                const option = document.createElement('option');
+                option.value = service.id;
+                option.textContent = service.name || `默认 ${customServices.indexOf(service) + 1}`;
+                option.dataset.isCustom = 'true';
+                engineSelect.appendChild(option);
+            });
+
+            engineSelect.appendChild(createOption(ADD_NEW_CUSTOM_SERVICE_ID, engineMenuConfig[ADD_NEW_CUSTOM_SERVICE_ID]));
+        };
+
+        const syncPanelState = () => {
+            const isEnabled = GM_getValue('enable_transDesc', false);
+            masterSwitch.checked = isEnabled;
+
+            populateEngineSelect();
+            const currentEngine = getValidEngineName();
+            engineSelect.value = currentEngine;
+            engineSelect.dispatchEvent(new Event('change'));
+
+            displayModeSelect.value = GM_getValue('translation_display_mode', 'bilingual');
+
+            panel.querySelectorAll('.settings-group').forEach(group => {
+                group.classList.toggle('ao3-trans-control-disabled', !isEnabled);
+            });
+            panel.querySelectorAll('.settings-control, .settings-input, .settings-action-button-inline, .online-glossary-delete-btn, .data-sync-action-btn').forEach(el => {
+                el.disabled = !isEnabled;
+            });
+
+            updateAllLabels();
+        };
+
+        const updateApiKeySection = (engineId) => {
+            const config = engineMenuConfig[engineId];
+            if (config && config.requiresApiKey) {
+                apiKeyGroup.style.display = 'block';
+                const stringKeyName = `${engineId}_keys_string`;
+                apiKeyInput.value = GM_getValue(stringKeyName, '');
+                apiKeyGroup.querySelector('.settings-label').textContent = `设置 ${config.displayName} API Key`;
+                apiKeyInput.placeholder = 'Key 1，Key 2，Key 3';
+                updateInputLabel(apiKeyInput);
+            } else {
+                apiKeyGroup.style.display = 'none';
+            }
+        };
+
+        panelElements.updateApiKeySection = updateApiKeySection;
+		const customServiceManager = createCustomServiceManager(panelElements, syncPanelState, populateEngineSelect);
 
         const isMobile = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
@@ -6805,17 +7689,27 @@
                 panel.style.top = '';
             } else {
                 panel.classList.remove('mobile-fixed-center');
-                const panelWidth = 320;
                 panel.style.visibility = 'hidden';
-                const panelHeight = panel.offsetHeight;
+                const panelRect = panel.getBoundingClientRect();
                 panel.style.visibility = 'visible';
 
                 let savedPos = GM_getValue(PANEL_POSITION_KEY);
-                if (!savedPos || isDragging) {
+                const hasBeenOpened = GM_getValue('panel_has_been_opened_once', false);
+
+                if (!hasBeenOpened) {
+                    const winW = document.documentElement.clientWidth;
+                    const winH = window.innerHeight;
+                    savedPos = {
+                        x: (winW - panelRect.width) / 2,
+                        y: (winH - panelRect.height) / 2
+                    };
+                    GM_setValue(PANEL_POSITION_KEY, savedPos);
+                    GM_setValue('panel_has_been_opened_once', true);
+                } else if (!savedPos || isDragging) {
                     savedPos = { x: panel.offsetLeft, y: panel.offsetTop };
                 }
 
-                const correctedPos = ensureOnScreen(savedPos, { width: panelWidth, height: panelHeight });
+                const correctedPos = ensureOnScreen(savedPos, { width: panelRect.width, height: panelRect.height });
                 panel.style.left = `${correctedPos.x}px`;
                 panel.style.top = `${correctedPos.y}px`;
             }
@@ -6836,9 +7730,9 @@
         };
 
         const toggleEditableSection = (sectionToShow) => {
-            const isAlreadyActive = sectionToShow && (sectionToShow.style.display === 'flex' || sectionToShow.style.display === 'block');
             editableSections.forEach(s => s.style.display = 'none');
-            if (sectionToShow && !isAlreadyActive) {
+            dataSyncActionsContainer.style.display = 'none';
+            if (sectionToShow) {
                 if (sectionToShow.id === 'editable-section-glossary-manage') {
                     sectionToShow.style.display = 'flex';
                 } else {
@@ -6849,18 +7743,10 @@
             }
         };
 
-        const populateEngineSelect = () => {
-            engineSelect.innerHTML = '';
-            Object.keys(engineMenuConfig).forEach(engineId => {
-                const option = document.createElement('option');
-                option.value = engineId;
-                option.textContent = engineMenuConfig[engineId].displayName;
-                engineSelect.appendChild(option);
-            });
-        };
-
         const updateModelSelect = (engineId) => {
             const config = engineMenuConfig[engineId];
+            modelGroup.style.display = 'none';
+
             if (config && config.modelMapping) {
                 modelSelect.innerHTML = '';
                 Object.keys(config.modelMapping).forEach(modelId => {
@@ -6869,49 +7755,25 @@
                     option.textContent = config.modelMapping[modelId];
                     modelSelect.appendChild(option);
                 });
-                modelGroup.style.display = 'block';
+                modelSelect.disabled = false;
                 modelSelect.value = GM_getValue(config.modelGmKey, Object.keys(config.modelMapping)[0]);
-            } else {
-                modelGroup.style.display = 'none';
-            }
-        };
-
-        const updateApiKeySection = (engineId) => {
-            const config = engineMenuConfig[engineId];
-
-            if (config && config.requiresApiKey) {
-                apiKeyGroup.style.display = 'block';
-                apiKeyInput.disabled = false;
-                apiKeySaveBtn.disabled = false;
-                const label = apiKeyGroup.querySelector('.settings-label');
-                if (label) label.textContent = `设置 ${config.displayName} API Key`;
-
-                const isArray = engineId === 'google_ai';
-                const keyName = `${engineId.split('_')[0]}_api_key`;
-                const gmKey = isArray ? 'google_ai_keys_array' : keyName;
-
-                const storedValue = GM_getValue(gmKey, isArray ? [] : '');
-                apiKeyInput.value = isArray ? storedValue.join(', ') : storedValue;
-            } else {
-                apiKeyGroup.style.display = 'none';
+                modelGroup.style.display = 'block';
+            } else if (engineId.startsWith('custom_')) {
+                customServiceManager.renderDisplayModeModelSelect(engineId);
             }
         };
 
         const saveApiKey = () => {
             const engineId = engineSelect.value;
-            const isArray = engineId === 'google_ai';
-            const keyName = `${engineId.split('_')[0]}_api_key`;
-            const gmKey = isArray ? 'google_ai_keys_array' : keyName;
-            const value = apiKeyInput.value.trim();
-            if (isArray) {
-                const keys = value.split(/[，,]/).map(k => k.trim()).filter(Boolean);
-                GM_setValue(gmKey, keys);
-                if (keys.length > 0) GM_setValue('google_ai_key_index', 0);
-                notifyAndLog(`已保存 ${keys.length} 个 Google AI API Key！`);
+            const value = apiKeyInput.value;
+
+            if (engineId.startsWith('custom_') || (engineId === ADD_NEW_CUSTOM_SERVICE_ID && customServiceManager.isPending())) {
+                customServiceManager.saveServiceField('apiKey', value);
             } else {
-                GM_setValue(gmKey, value);
-                notifyAndLog(`${engineMenuConfig[engineId].displayName} API Key 已${value ? '保存' : '清除'}！`);
+                const stringKeyName = `${engineId}_keys_string`;
+                GM_setValue(stringKeyName, value);
             }
+            synchronizeAllSettings();
         };
 
         const resetDeleteButton = () => {
@@ -6954,30 +7816,79 @@
             resetDeleteButton();
         };
 
-        const syncPanelState = () => {
-            const isEnabled = GM_getValue('enable_transDesc', false);
-            masterSwitch.checked = isEnabled;
+        const cleanupAllEmptyCustomServices = () => {
+            const services = GM_getValue(CUSTOM_SERVICES_LIST_KEY, []);
+            const servicesToKeep = services.filter(s => s.url || (s.models && s.models.length > 0));
 
-            const currentEngine = getValidEngineName();
-            engineSelect.value = currentEngine;
-            updateModelSelect(currentEngine);
-            updateApiKeySection(currentEngine);
-            displayModeSelect.value = GM_getValue('translation_display_mode', 'bilingual');
+            if (services.length !== servicesToKeep.length) {
+                GM_setValue(CUSTOM_SERVICES_LIST_KEY, servicesToKeep);
+                const currentEngine = GM_getValue('transEngine');
+                const isCurrentEngineRemoved = !servicesToKeep.some(s => s.id === currentEngine);
 
-            panel.querySelectorAll('.settings-group').forEach(group => {
-                group.classList.toggle('ao3-trans-control-disabled', !isEnabled);
-            });
-            panel.querySelectorAll('.settings-control, .settings-input, .settings-action-button-inline, .online-glossary-delete-btn').forEach(el => {
-                el.disabled = !isEnabled;
-            });
+                if (isCurrentEngineRemoved && currentEngine.startsWith('custom_')) {
+                    GM_setValue('transEngine', 'google_translate');
+                }
+            }
+        };
 
-            updateAllLabels();
+        const handleExport = async () => {
+            try {
+                const data = await exportAllData();
+                const jsonString = JSON.stringify(data, null, 2);
+                const blob = new Blob([jsonString], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                const shanghaiDate = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Shanghai' }).slice(0, 10);
+                a.download = `AO3-Chinese-Plugin-Backup-${shanghaiDate}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                notifyAndLog("配置已成功导出！");
+            } catch (e) {
+                if (DEBUG_MODE) {
+                    console.error("导出失败:", e);
+                }
+                notifyAndLog("导出失败，请查看控制台获取详情。", "导出错误", "error");
+            }
+        };
+
+        const handleImport = () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                if (!window.confirm("您确定要导入该配置文件吗？这将覆盖您当前的所有设置，包括 API Key 、术语表、自定义翻译服务等。\n注意：此操作无法撤销。")) {
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    try {
+                        const jsonData = JSON.parse(event.target.result);
+                        const result = await importAllData(jsonData, syncPanelState);
+                        notifyAndLog(result.message, result.success ? "导入成功" : "导入失败", result.success ? "info" : "error");
+                    } catch (err) {
+                        if (DEBUG_MODE) {
+                            console.error("导入失败:", err);
+                        }
+                        notifyAndLog(`导入失败：${err.message}`, "导入错误", "error");
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
         };
 
         const togglePanel = () => {
             const isOpening = panel.style.display !== 'block';
             if (isOpening) {
                 editableSections.forEach(s => s.style.display = 'none');
+                dataSyncActionsContainer.style.display = 'none';
                 syncPanelState();
 
                 const lastAction = GM_getValue(GLOSSARY_ACTION_KEY, '');
@@ -6991,6 +7902,10 @@
                 panel.style.display = 'block';
                 updatePanelPosition();
             } else {
+                if (customServiceManager.isPending()) {
+                    customServiceManager.cancelPending();
+                }
+                cleanupAllEmptyCustomServices();
                 panel.style.display = 'none';
                 if (onPanelCloseCallback) onPanelCloseCallback();
             }
@@ -7027,17 +7942,39 @@
         });
 
         engineSelect.addEventListener('change', () => {
+            if (customServiceManager.isPending()) {
+                customServiceManager.cancelPending();
+            }
             const newEngine = engineSelect.value;
-            GM_setValue('transEngine', newEngine);
-            updateModelSelect(newEngine);
-            updateApiKeySection(newEngine);
+
+            customServiceContainer.style.display = 'none';
+            modelGroup.style.display = 'none';
+            apiKeyGroup.style.display = 'none';
+
+            if (newEngine === ADD_NEW_CUSTOM_SERVICE_ID) {
+                customServiceManager.startPendingCreation();
+            } else if (newEngine.startsWith('custom_')) {
+                GM_setValue('transEngine', newEngine);
+                customServiceManager.enterEditMode(newEngine);
+            } else {
+                GM_setValue('transEngine', newEngine);
+                updateModelSelect(newEngine);
+                updateApiKeySection(newEngine);
+            }
             updateAllLabels();
         });
 
         modelSelect.addEventListener('change', () => {
-            const config = engineMenuConfig[engineSelect.value];
-            if (config && config.modelGmKey) {
-                GM_setValue(config.modelGmKey, modelSelect.value);
+            const engineId = engineSelect.value;
+            if (engineId.startsWith('custom_')) {
+                if (!modelSelect.disabled) {
+                    GM_setValue(`${ACTIVE_MODEL_PREFIX_KEY}${engineId}`, modelSelect.value);
+                }
+            } else {
+                const config = engineMenuConfig[engineId];
+                if (config && config.modelGmKey) {
+                    GM_setValue(config.modelGmKey, modelSelect.value);
+                }
             }
         });
 
@@ -7052,10 +7989,8 @@
         glossaryActionsSelect.addEventListener('change', () => {
             const action = glossaryActionsSelect.value;
             GM_setValue(GLOSSARY_ACTION_KEY, action);
-            if (!action) {
-                toggleEditableSection(null);
-                return;
-            }
+            toggleEditableSection(null);
+
             switch (action) {
                 case 'local':
                     glossaryLocalInput.value = GM_getValue(LOCAL_GLOSSARY_STRING_KEY, '');
@@ -7070,57 +8005,38 @@
                     toggleEditableSection(glossaryImportSection);
                     break;
                 case 'manage':
+                    populateManageGlossary();
                     toggleEditableSection(glossaryManageSection);
                     break;
                 case 'post_replace':
                     postReplaceInput.value = GM_getValue(POST_REPLACE_STRING_KEY, '');
                     toggleEditableSection(postReplaceSection);
                     break;
+                case 'data_sync':
+                    dataSyncActionsContainer.style.display = 'flex';
+                    break;
                 default:
-                    toggleEditableSection(null);
                     break;
             }
         });
 
         glossaryLocalSaveBtn.addEventListener('click', () => {
             GM_setValue(LOCAL_GLOSSARY_STRING_KEY, glossaryLocalInput.value);
-            notifyAndLog('本地术语表已更新。');
+            synchronizeAllSettings();
         });
 
         glossaryForbiddenSaveBtn.addEventListener('click', () => {
-            const rawInput = glossaryForbiddenInput.value;
-            const newTerms = rawInput.split(/[，,]/).map(t => t.trim()).filter(Boolean);
-            GM_setValue(LOCAL_FORBIDDEN_TERMS_KEY, newTerms);
-            GM_setValue(LOCAL_FORBIDDEN_STRING_KEY, rawInput);
-            notifyAndLog('禁翻术语表已更新。');
+            GM_setValue(LOCAL_FORBIDDEN_STRING_KEY, glossaryForbiddenInput.value);
+            synchronizeAllSettings();
         });
 
         glossaryImportSaveBtn.addEventListener('click', () => {
             const url = glossaryImportUrlInput.value.trim();
             if (url) {
-                importOnlineGlossary(url, (newUrl, newName) => {
-                    const wasEmpty = glossaryManageSelect.options.length === 0 || (glossaryManageSelect.options.length === 1 && glossaryManageSelect.options[0].disabled);
-
-                    if (wasEmpty) {
-                        glossaryManageSelect.innerHTML = '';
-                        glossaryManageSelect.disabled = false;
+                importOnlineGlossary(url, () => {
+                    if (glossaryActionsSelect.value === 'manage') {
+                        populateManageGlossary();
                     }
-
-                    let existingOption = glossaryManageSelect.querySelector(`option[value="${newUrl}"]`);
-                    if (!existingOption) {
-                        const newOption = document.createElement('option');
-                        newOption.value = newUrl;
-                        newOption.textContent = newName;
-                        newOption.title = newName;
-                        glossaryManageSelect.appendChild(newOption);
-                    }
-
-                    if (wasEmpty) {
-                        glossaryManageSelect.value = newUrl;
-                        glossaryManageSelect.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-
-                    updateInputLabel(glossaryManageSelect);
                 });
             }
         });
@@ -7148,6 +8064,7 @@
                     delete allMetadata[urlToRemove];
                     GM_setValue(IMPORTED_GLOSSARY_KEY, allGlossaries);
                     GM_setValue(GLOSSARY_METADATA_KEY, allMetadata);
+                    invalidateGlossaryCache();
                     notifyAndLog(`已删除术语表: ${decodeURIComponent(urlToRemove.split('/').pop())}`);
                     populateManageGlossary();
                     updateInputLabel(glossaryManageSelect);
@@ -7159,56 +8076,12 @@
         });
 
         postReplaceSaveBtn.addEventListener('click', () => {
-            const rawInput = postReplaceInput.value;
-            const rules = {
-                singleRules: {},
-                multiPartRules: []
-            };
-
-            const internalSeparatorRegex = /[\s-－﹣—–]+/;
-            const internalSeparatorGlobalRegex = /[\s-－﹣—–]+/g;
-
-            rawInput.split(/[，,]/).forEach(entry => {
-                const trimmedEntry = entry.trim();
-                if (!trimmedEntry) return;
-
-                const multiPartMatch = trimmedEntry.match(/^(.*?)\s*[=＝]\s*(.*?)$/);
-                if (multiPartMatch) {
-                    const source = multiPartMatch[1].trim();
-                    const target = multiPartMatch[2].trim();
-
-                    if (source && target) {
-                        const sourceParts = source.split(internalSeparatorRegex);
-                        const targetParts = target.split(internalSeparatorRegex);
-                        const multiPartRule = {
-                            source: source.replace(internalSeparatorGlobalRegex, ' '),
-                            target: target.replace(internalSeparatorGlobalRegex, ' '),
-                            subRules: {}
-                        };
-
-                        if (sourceParts.length === targetParts.length && sourceParts.length > 1) {
-                            for (let i = 0; i < sourceParts.length; i++) {
-                                multiPartRule.subRules[sourceParts[i]] = targetParts[i];
-                            }
-                        }
-                        rules.multiPartRules.push(multiPartRule);
-                    }
-                } else {
-                    const singlePartMatch = trimmedEntry.match(/^(.*?)\s*[:：]\s*(.*?)$/);
-                    if (singlePartMatch) {
-                        const key = singlePartMatch[1].trim();
-                        const value = singlePartMatch[2].trim();
-                        if (key) {
-                            rules.singleRules[key] = value;
-                        }
-                    }
-                }
-            });
-
-            GM_setValue(POST_REPLACE_STRING_KEY, rawInput);
-            GM_setValue(POST_REPLACE_MAP_KEY, rules);
-            notifyAndLog('译文后处理替换规则已更新。');
+            GM_setValue(POST_REPLACE_STRING_KEY, postReplaceInput.value);
+            synchronizeAllSettings();
         });
+
+        importDataBtn.addEventListener('click', () => handleImport(syncPanelState));
+        exportDataBtn.addEventListener('click', handleExport);
 
         closeBtn.addEventListener('click', togglePanel);
 
@@ -7258,7 +8131,6 @@
         document.addEventListener('mousedown', handleClickOutside, true);
 
         populateEngineSelect();
-        populateManageGlossary();
         syncPanelState();
 
         const repositionActiveDropdown = () => {
@@ -7304,24 +8176,66 @@
             const list = document.createElement('ul');
             menu.appendChild(list);
 
-            const options = triggerElement.querySelectorAll('option');
-            options.forEach(option => {
-                if (option.disabled && option.value === "") return;
+            const metadata = (triggerElement.id === 'setting-select-glossary-manage') ? GM_getValue(GLOSSARY_METADATA_KEY, {}) : null;
+
+            const createListItem = (option) => {
+                if (option.disabled) {
+                    const separatorItem = document.createElement('li');
+                    separatorItem.style.textAlign = 'center';
+                    separatorItem.style.color = '#ccc';
+                    separatorItem.style.cursor = 'default';
+                    separatorItem.textContent = option.textContent;
+                    return separatorItem;
+                }
+
                 const listItem = document.createElement('li');
-                listItem.textContent = option.textContent;
                 listItem.dataset.value = option.value;
-                listItem.title = option.title || option.textContent;
                 if (option.selected) {
                     listItem.classList.add('selected');
                 }
-                list.appendChild(listItem);
+
+                const textSpan = document.createElement('span');
+                textSpan.className = 'item-text';
+                textSpan.textContent = option.textContent;
+                textSpan.title = option.textContent;
+                listItem.appendChild(textSpan);
+
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'item-actions';
+
+                if (triggerElement.id === 'setting-select-glossary-manage' && metadata && metadata[option.value]) {
+                    const toggleBtn = document.createElement('button');
+                    toggleBtn.className = 'item-action-btn toggle-glossary';
+                    const isEnabled = metadata[option.value].enabled !== false;
+                    toggleBtn.textContent = isEnabled ? '禁用' : '启用';
+                    toggleBtn.dataset.url = option.value;
+                    actionsDiv.appendChild(toggleBtn);
+                }
+
+                if (option.dataset.isCustom === 'true') {
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'item-action-btn delete';
+                    deleteBtn.textContent = '删除';
+                    deleteBtn.dataset.serviceId = option.value;
+                    actionsDiv.appendChild(deleteBtn);
+                }
+                listItem.appendChild(actionsDiv);
+                return listItem;
+            };
+
+            Array.from(triggerElement.options).forEach(option => {
+                const item = createListItem(option);
+                if (item) list.appendChild(item);
             });
 
             document.body.appendChild(menu);
-
             activeDropdown = { menu: menu, trigger: triggerElement };
-
             repositionActiveDropdown();
+
+            const selectedItem = list.querySelector('.selected');
+            if (selectedItem) {
+                selectedItem.scrollIntoView({ block: 'center', behavior: 'instant' });
+            }
 
             requestAnimationFrame(() => {
                 menu.classList.add('visible');
@@ -7336,11 +8250,39 @@
             };
 
             list.addEventListener('click', (e) => {
-                if (e.target.tagName === 'LI') {
-                    const value = e.target.dataset.value;
-                    triggerElement.value = value;
-                    triggerElement.dispatchEvent(new Event('change', { bubbles: true }));
-                    closeMenu();
+                const target = e.target;
+                e.stopPropagation();
+
+                if (target.classList.contains('toggle-glossary')) {
+                    const url = target.dataset.url;
+                    const currentMetadata = GM_getValue(GLOSSARY_METADATA_KEY, {});
+                    if (currentMetadata[url]) {
+                        const currentState = currentMetadata[url].enabled !== false;
+                        currentMetadata[url].enabled = !currentState;
+                        GM_setValue(GLOSSARY_METADATA_KEY, currentMetadata);
+                        invalidateGlossaryCache();
+                        target.textContent = !currentState ? '禁用' : '启用';
+                    }
+                } else if (target.classList.contains('delete')) {
+                    if (target.dataset.confirming) {
+                        const serviceId = target.dataset.serviceId;
+                        customServiceManager.deleteService(serviceId);
+                        closeMenu();
+                    } else {
+                        list.querySelectorAll('.delete[data-confirming]').forEach(btn => {
+                            btn.textContent = '删除';
+                            delete btn.dataset.confirming;
+                        });
+                        target.textContent = '确认删除';
+                        target.dataset.confirming = 'true';
+                    }
+                } else {
+                    const li = target.closest('li');
+                    if (li && typeof li.dataset.value !== 'undefined') {
+                        triggerElement.value = li.dataset.value;
+                        triggerElement.dispatchEvent(new Event('change', { bubbles: true }));
+                        closeMenu();
+                    }
                 }
             });
 
@@ -7348,10 +8290,33 @@
         }
 
         panel.addEventListener('mousedown', (e) => {
-            const select = e.target.closest('.settings-select');
+            const select = e.target.closest('.settings-select.custom-styled-select');
             if (select) {
                 e.preventDefault();
                 createCustomDropdown(select);
+            }
+        });
+
+        customServiceContainer.addEventListener('mousedown', (e) => {
+            const select = e.target.closest('.settings-select.custom-styled-select');
+            if (select) {
+                e.preventDefault();
+                createCustomDropdown(select);
+            }
+        });
+
+        customServiceContainer.addEventListener('change', (e) => {
+            if (e.target.id === 'custom-service-action-select') {
+                const serviceId = engineSelect.value;
+                const newAction = e.target.value;
+
+                if (serviceId && serviceId.startsWith('custom_')) {
+                    const lastActionKey = `custom_service_last_action_${serviceId}`;
+                    GM_setValue(lastActionKey, newAction);
+                    customServiceManager.enterEditMode(serviceId);
+                } else if (customServiceManager.isPending()) {
+                    customServiceManager.updatePendingSection(newAction);
+                }
             }
         });
 
@@ -7367,6 +8332,72 @@
             modelGmKey: null,
             requiresApiKey: false
         },
+        'openai': {
+            displayName: 'OpenAI',
+            modelGmKey: 'openai_model',
+            modelMapping: {
+                "gpt-5-chat-2025-01-01-preview": "GPT-5 Preview-2025-01-01",
+                "gpt-5": "GPT-5",
+                "gpt-5-chat": "GPT-5 Chat",
+                "gpt-5-mini": "GPT-5 Mini",
+                "gpt-5-nano": "GPT-5 Nano",
+                "gpt-4.5-preview-2025-02-27": "GPT-4.5 Preview-2025-02-27",
+                "gpt-4.5-preview": "GPT-4.5 Preview",
+                "gpt-4.1-2025-04-14": "GPT-4.1-2025-04-14",
+                "gpt-4.1": "GPT-4.1",
+                "gpt-4.1-mini-2025-04-14": "GPT-4.1 Mini-2025-04-14",
+                "gpt-4.1-mini": "GPT-4.1 Mini",
+                "gpt-4.1-nano-2025-04-14": "GPT-4.1 Nano-2025-04-14",
+                "gpt-4.1-nano": "GPT-4.1 Nano",
+                "gpt-4o-2024-11-20": "GPT-4o-2024-11-20",
+                "gpt-4o-2024-08-06": "GPT-4o-2024-08-06",
+                "gpt-4o-2024-05-13": "GPT-4o-2024-05-13",
+                "gpt-4o": "GPT-4o",
+                "chatgpt-4o-latest": "ChatGPT 4o-Latest",
+                "gpt-4o-mini-2024-07-18": "GPT-4o Mini-2024-07-18",
+                "gpt-4o-mini": "GPT-4o Mini",
+                "gpt-4-turbo-2024-04-09": "GPT-4 Turbo-2024-04-09",
+                "gpt-4-turbo": "GPT-4 Turbo",
+                "gpt-4-turbo-preview": "GPT-4 Turbo Preview",
+                "gpt-4-1106-preview": "GPT-4 Turbo Preview-1106",
+                "gpt-4-vision-preview": "GPT-4 Vision Preview",
+                "gpt-4-32k-0613": "GPT-4-32k-0613",
+                "gpt-4-32k": "GPT-4-32k",
+                "gpt-4-0613": "GPT-4-0613",
+                "gpt-4": "GPT-4",
+                "gpt-3.5-turbo-0125": "GPT-3.5 Turbo-0125",
+                "gpt-3.5-turbo-1106": "GPT-3.5 Turbo-1106",
+                "gpt-3.5-turbo": "GPT-3.5 Turbo",
+                "o4-mini": "o4-mini",
+                "o3": "o3",
+                "o3-mini": "o3-mini",
+                "o1-preview": "o1-preview",
+                "o1-mini": "o1-mini",
+                "dall-e-3": "DALL-E 3"
+            },
+            requiresApiKey: true
+        },
+        'anthropic': {
+            displayName: 'Anthropic',
+            modelGmKey: 'anthropic_model',
+            modelMapping: {
+                "claude-opus-4-1-20250805": "Claude 4.1 Opus-2025-08-05",
+                "claude-opus-4-1-latest": "Claude 4.1 Opus-Latest",
+                "claude-opus-4-20250522": "Claude 4 Opus",
+                "claude-sonnet-4-20250514": "Claude 4 Sonnet-2025-05-14",
+                "claude-sonnet-4-latest": "Claude 4 Sonnet-Latest",
+                "claude-3-7-sonnet-20250219": "Claude 3.7 Sonnet",
+                "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet-2024-10-22",
+                "claude-3-5-sonnet-latest": "Claude 3.5 Sonnet-Latest",
+                "claude-3-5-haiku-20241022": "Claude 3.5 Haiku-2024-10-22",
+                "claude-3-5-haiku-latest": "Claude 3.5 Haiku-Latest",
+                "claude-3-opus-20240229": "Claude 3 Opus-2024-02-29",
+                "claude-3-opus-latest": "Claude 3 Opus-Latest",
+                "claude-3-sonnet-20240229": "Claude 3 Sonnet",
+                "claude-3-haiku-20240307": "Claude 3 Haiku"
+            },
+            requiresApiKey: true
+        },
         'zhipu_ai': {
             displayName: 'Zhipu AI',
             modelGmKey: null,
@@ -7376,8 +8407,8 @@
             displayName: 'DeepSeek',
             modelGmKey: 'deepseek_model',
             modelMapping: {
-                'deepseek-reasoner': 'DeepSeek R1',
-                'deepseek-chat': 'DeepSeek V3'
+                'deepseek-reasoner': 'DeepSeek V3.1 Think',
+                'deepseek-chat': 'DeepSeek V3.1 Non-Think'
             },
             requiresApiKey: true
         },
@@ -7433,18 +8464,23 @@
                 'Qwen/Qwen3-235B-A22B-Instruct-2507': 'Qwen3 235B'
             },
             requiresApiKey: true
+        },
+        'add_new_custom': {
+            displayName: '自定义',
+            modelGmKey: null,
+            requiresApiKey: false
         }
     };
 
     /**
-     * 动态应用翻译显示模式
+     * 动态应用翻译显示模式的更改
      */
     function applyDisplayModeChange(mode) {
-        const translatedBlocks = document.querySelectorAll('#chapters .userstuff .translated-by-ao3-script');
-        translatedBlocks.forEach(translatedNode => {
-            const originalNode = translatedNode.previousElementSibling;
-            if (originalNode && originalNode.dataset.translationState === 'translated') {
-                originalNode.style.display = (mode === 'translation_only') ? 'none' : '';
+        const originalUnits = document.querySelectorAll('[data-translation-state="translated"]');
+        originalUnits.forEach(unit => {
+            const nextSibling = unit.nextElementSibling;
+            if (nextSibling && (nextSibling.classList.contains('translated-by-ao3-script') || nextSibling.classList.contains('translated-by-ao3-script-error'))) {
+                unit.style.display = (mode === 'translation_only') ? 'none' : '';
             }
         });
     }
@@ -7524,7 +8560,7 @@
      */
 	function getValidEngineName() {
 		const storedEngine = GM_getValue('transEngine');
-		if (storedEngine && CONFIG.TRANS_ENGINES[storedEngine]) {
+		if (storedEngine && (CONFIG.TRANS_ENGINES[storedEngine] || storedEngine.startsWith('custom_'))) {
 			return storedEngine;
 		}
 		return CONFIG.transEngine;
@@ -7535,30 +8571,55 @@
      */
 	async function requestRemoteTranslation(paragraphs, { retryCount = 0, maxRetries = 5 } = {}) {
 		const engineName = getValidEngineName();
-		const engineConfig = CONFIG.TRANS_ENGINES[engineName];
+
+		let engineConfig = CONFIG.TRANS_ENGINES[engineName];
+
+		if (!engineConfig && engineName.startsWith('custom_')) {
+			engineConfig = {
+				name: '自定义服务',
+				method: 'POST',
+				getRequestData: (paragraphs, engineName) => {
+					const model = getCurrentModelId(engineName);
+					return createRequestData(model, sharedSystemPrompt, paragraphs);
+				},
+				responseIdentifier: 'choices[0].message.content',
+			};
+		}
+
 		if (!engineConfig) {
+			console.error(`%c[翻译流程] 错误: 未找到服务配置。`, `服务 "${engineName}" 未配置。`, paragraphs);
 			throw new Error(`服务 ${engineName} 未配置`);
 		}
 
 		try {
 			let translatedText;
-			if (engineName === 'google_translate') {
-                const translatedHtmlSnippets = await _handleGoogleRequest(engineConfig, paragraphs);
-                if (!Array.isArray(translatedHtmlSnippets)) {
-                    throw new Error('谷歌翻译接口未返回预期的数组格式');
-                }
-                const innerContents = translatedHtmlSnippets.map(html => {
-                    const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = html;
-                    return tempDiv.firstElementChild ? tempDiv.firstElementChild.innerHTML : '';
-                });
-                translatedText = innerContents.map((content, index) => `${index + 1}. ${content}`).join('\n\n');
 
-            } else if (engineName === 'google_ai') {
-				translatedText = await _handleGoogleAiRequest(engineConfig, paragraphs);
-			} else {
-				translatedText = await _handleStandardApiRequest(engineConfig, paragraphs, engineName);
-			}
+            switch (engineName) {
+                case 'google_translate':
+                    const translatedHtmlSnippets = await _handleGoogleRequest(engineConfig, paragraphs);
+                    if (!Array.isArray(translatedHtmlSnippets)) {
+                        throw new Error('谷歌翻译接口未返回预期的数组格式');
+                    }
+                    const innerContents = translatedHtmlSnippets.map(html => {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = html;
+                        return tempDiv.firstElementChild ? tempDiv.firstElementChild.innerHTML : '';
+                    });
+                    translatedText = innerContents.map((content, index) => `${index + 1}. ${content}`).join('\n\n');
+                    break;
+                case 'openai':
+                    translatedText = await _handleOpenaiRequest(engineConfig, paragraphs, engineName);
+                    break;
+                case 'anthropic':
+                    translatedText = await _handleAnthropicRequest(engineConfig, paragraphs, engineName);
+                    break;
+                case 'google_ai':
+                    translatedText = await _handleGoogleAiRequest(engineConfig, paragraphs, engineName);
+                    break;
+                default:
+                    translatedText = await _handleStandardApiRequest(engineConfig, paragraphs, engineName);
+                    break;
+            }
 			
 			if (typeof translatedText !== 'string' || !translatedText.trim()) {
 				throw new Error('API 未返回有效文本');
@@ -7567,6 +8628,8 @@
 			return translatedText;
 
 		} catch (error) {
+            console.error(`%c[翻译流程] 错误: 在第 ${retryCount + 1} 次尝试中捕获到错误。`, 'color: red;', error);
+
             if (error.noRetry) {
                 throw error;
             }
@@ -7577,11 +8640,11 @@
                 error.type === 'network' ||
                 error.type === 'timeout' ||
                 error.message.includes('超时') ||
-                error.message.includes('网络');
+                error.message.includes('网络') ||
+                error.message === 'API 未返回有效文本';
 
 			if (retryCount < maxRetries && isRetriable) {
 				const delay = Math.pow(2, retryCount) * 1500 + Math.random() * 1000;
-				console.warn(`请求遇到可重试错误：${error.message}。将在 ${Math.round(delay/1000)} 秒后重试（第 ${retryCount + 1} 次）...`);
 				await sleep(delay);
 				return await requestRemoteTranslation(paragraphs, { retryCount: retryCount + 1, maxRetries });
 			}
@@ -7590,86 +8653,117 @@
 	}
 
     /**
-     * 处理 Google AI 的 API 请求，包含 Key 轮询机制
+     * 为指定服务获取下一个可用的 API Key，包含轮询和跨标签页锁机制
      */
-    async function _handleGoogleAiRequest(engineConfig, paragraphs) {
-        const keys = GM_getValue('google_ai_keys_array', []);
+    async function _getApiKeyForService(serviceName) {
+        const arrayKey = `${serviceName}_keys_array`;
+        const keys = GM_getValue(arrayKey, []);
+
         if (keys.length === 0) {
-            const error = new Error('请先在设置面板中设置至少一个 Google AI API Key');
+            const serviceDisplayName = engineMenuConfig[serviceName]?.displayName || serviceName;
+            const error = new Error(`请先在设置面板中为“${serviceDisplayName}”服务设置至少一个 API Key`);
             error.noRetry = true;
             throw error;
         }
 
-        let keyIndex = GM_getValue('google_ai_key_index', 0) % keys.length;
-        const modelId = getCurrentModelId();
+        const lockKey = `${serviceName}_key_lock`;
+        const LOCK_TIMEOUT = 5000;
+        const myLockId = `lock_${Date.now()}_${Math.random()}`;
 
-        for (let i = 0; i < keys.length; i++) {
-            const currentKey = keys[keyIndex];
-            console.log(`正在尝试使用 Google AI API Key #${keyIndex + 1}...`);
-
-            const final_url = engineConfig.url_api.replace('{model}', modelId) + `?key=${currentKey}`;
-            const requestData = engineConfig.getRequestData(paragraphs);
-
-            try {
-                const result = await new Promise((resolve, reject) => {
-                    GM_xmlhttpRequest({
-                        method: engineConfig.method, url: final_url, headers: engineConfig.headers,
-                        data: JSON.stringify(requestData), responseType: 'json', timeout: 45000,
-                        onload: (res) => {
-                            let responseData = res.response;
-                            if (typeof responseData === 'string') try { responseData = JSON.parse(responseData); } catch(e) {}
-
-                            const candidate = getNestedProperty(responseData, 'candidates[0]');
-                            const translatedText = getNestedProperty(candidate, 'content.parts[0].text');
-                            const finishReason = getNestedProperty(candidate, 'finishReason');
-                            const errorMessage = getNestedProperty(responseData, 'error.message') || res.statusText || '未知错误';
-
-                            if (res.status === 200 && translatedText) {
-                                resolve(responseData);
-                            } else {
-                                let errorType = 'api_error';
-                                let message = `Key #${keyIndex + 1} 遇到错误（代码：${res.status}）：${errorMessage}`;
-
-                                if (res.status === 200) {
-                                    if (['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT'].includes(finishReason)) {
-                                        errorType = 'content_error';
-                                        message = `因 ${finishReason} 原因，请求被 Google AI 安全策略阻止`;
-                                    } else {
-                                        errorType = 'empty_response';
-                                        message = `Key #${keyIndex + 1} 失败：API 返回了空内容 (FinishReason: ${finishReason})`;
-                                    }
-                                } else if (res.status === 400 && errorMessage.toLowerCase().includes('api key not valid')) {
-                                    errorType = 'key_invalid';
-                                    message = `Key #${keyIndex + 1} 无效`;
-                                }
-
-                                reject({ type: errorType, message: message, res: res });
-                            }
-                        },
-                        onerror: () => reject({ type: 'network', message: `Key #${keyIndex + 1} 网络错误` }),
-                        ontimeout: () => reject({ type: 'network', message: `Key #${keyIndex + 1} 请求超时` })
-                    });
-                });
-
-                const translatedText = getNestedProperty(result, engineConfig.responseIdentifier);
-                GM_setValue('google_ai_key_index', (keyIndex + 1) % keys.length);
-                return translatedText;
-
-            } catch (errorData) {
-                const finalError = _handleGoogleAiError({ ...errorData, name: engineConfig.name });
-
-                if (errorData.type === 'key_invalid' || getNestedProperty(errorData, 'res.status') === 403) {
-                    keyIndex = (keyIndex + 1) % keys.length;
-                    GM_setValue('google_ai_key_index', keyIndex);
-                    if (i === keys.length - 1) {
-                        const allKeysFailedError = new Error('所有 Google AI API Key 均已失效、权限不足或用尽额度。');
-                        allKeysFailedError.noRetry = true;
-                        throw allKeysFailedError;
+        async function acquireLock() {
+            const startTime = Date.now();
+            while (Date.now() - startTime < LOCK_TIMEOUT) {
+                const currentLock = GM_getValue(lockKey, null);
+                if (!currentLock || (Date.now() - currentLock.timestamp > LOCK_TIMEOUT)) {
+                    GM_setValue(lockKey, { id: myLockId, timestamp: Date.now() });
+                    await sleep(50);
+                    const confirmedLock = GM_getValue(lockKey, null);
+                    if (confirmedLock && confirmedLock.id === myLockId) {
+                        return true;
                     }
-                } else {
-                    throw finalError;
                 }
+                await sleep(100 + Math.random() * 100);
             }
+            return false;
+        }
+
+        function releaseLock() {
+            const currentLock = GM_getValue(lockKey, null);
+            if (currentLock && currentLock.id === myLockId) {
+                GM_deleteValue(lockKey);
+            }
+        }
+
+        if (!(await acquireLock())) {
+            throw new Error(`获取 ${serviceName} API Key 的操作锁超时，请稍后重试。`);
+        }
+
+        try {
+            const indexKey = `${serviceName}_key_index`;
+            const startIndex = GM_getValue(indexKey, 0);
+            const currentIndex = startIndex % keys.length;
+            GM_setValue(indexKey, (startIndex + 1) % keys.length);
+
+            const currentKey = keys[currentIndex];
+            return { key: currentKey, index: currentIndex };
+        } finally {
+            releaseLock();
+        }
+    }
+
+    /**
+     * 处理 Google AI 的 API 请求，通过调用 Key 获取函数实现轮询
+     */
+    async function _handleGoogleAiRequest(engineConfig, paragraphs, engineName) {
+        const { key: currentKey, index: currentIndex } = await _getApiKeyForService(engineName);
+
+        const modelId = getCurrentModelId(engineName);
+        const final_url = engineConfig.url_api.replace('{model}', modelId) + `?key=${currentKey}`;
+        const requestData = engineConfig.getRequestData(paragraphs, engineName);
+
+        try {
+            const result = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: engineConfig.method, url: final_url, headers: engineConfig.headers,
+                    data: JSON.stringify(requestData), responseType: 'json', timeout: 45000,
+                    onload: (res) => {
+                        let responseData = res.response;
+                        if (typeof responseData === 'string') try { responseData = JSON.parse(responseData); } catch(e) {}
+
+                        const candidate = getNestedProperty(responseData, 'candidates[0]');
+                        const translatedText = getNestedProperty(candidate, 'content.parts[0].text');
+                        const finishReason = getNestedProperty(candidate, 'finishReason');
+                        const errorMessage = getNestedProperty(responseData, 'error.message') || res.statusText || '未知错误';
+
+                        if (res.status === 200 && translatedText) {
+                            resolve(responseData);
+                        } else {
+                            let errorType = 'api_error';
+                            let message = `Key #${currentIndex + 1} 遇到错误（代码：${res.status}）：${errorMessage}`;
+
+                            if (res.status === 200) {
+                                if (['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT'].includes(finishReason)) {
+                                    errorType = 'content_error';
+                                    message = `因 ${finishReason} 原因，请求被 Google AI 安全策略阻止`;
+                                } else {
+                                    errorType = 'empty_response';
+                                    message = `Key #${currentIndex + 1} 失败：API 返回了空内容 (FinishReason: ${finishReason})`;
+                                }
+                            } else if (res.status === 400 && errorMessage.toLowerCase().includes('api key not valid')) {
+                                errorType = 'key_invalid';
+                                message = `Key #${currentIndex + 1} 无效`;
+                            }
+
+                            reject({ type: errorType, message: message, res: res });
+                        }
+                    },
+                    onerror: () => reject({ type: 'network', message: `Key #${currentIndex + 1} 网络错误` }),
+                    ontimeout: () => reject({ type: 'network', message: `Key #${currentIndex + 1} 请求超时` })
+                });
+            });
+            return getNestedProperty(result, engineConfig.responseIdentifier);
+        } catch (errorData) {
+            throw _handleGoogleAiError({ ...errorData, name: engineConfig.name });
         }
     }
 
@@ -7715,29 +8809,127 @@
     }
 
     /**
-     * 处理标准 Bearer Token 认证的 API 请求
+     * 处理对 OpenAI API 的请求
+     */
+    async function _handleOpenaiRequest(engineConfig, paragraphs, engineName) {
+        const { key: apiKey, index: keyIndex } = await _getApiKeyForService(engineName);
+        const modelId = getCurrentModelId(engineName);
+
+        const requestData = {
+            model: modelId,
+            messages: [
+                { "role": "system", "content": sharedSystemPrompt },
+                { "role": "user", "content": paragraphs.map((p, i) => `${i + 1}. ${p.innerHTML}`).join('\n\n') }
+            ],
+            stream: false,
+            temperature: 1.0,
+        };
+
+        const res = await new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: engineConfig.method,
+                url: engineConfig.url_api,
+                headers: { ...engineConfig.headers, 'Authorization': `Bearer ${apiKey}` },
+                data: JSON.stringify(requestData),
+                responseType: 'json',
+                timeout: 45000,
+                onload: resolve,
+                onerror: () => reject(new Error(`Key #${keyIndex + 1} 网络请求错误`)),
+                ontimeout: () => reject(new Error(`Key #${keyIndex + 1} 请求超时`))
+            });
+        });
+
+        if (res.status !== 200) {
+            let responseData = res.response;
+            if (typeof responseData === 'string') try { responseData = JSON.parse(responseData); } catch (e) {}
+            throw _handleOpenaiError(res, engineConfig.name, responseData);
+        }
+
+        return getNestedProperty(res.response, 'choices[0].message.content');
+    }
+
+    /**
+     * 处理对 Anthropic API 的请求
+     */
+    async function _handleAnthropicRequest(engineConfig, paragraphs, engineName) {
+        const { key: apiKey, index: keyIndex } = await _getApiKeyForService(engineName);
+        const modelId = getCurrentModelId(engineName);
+
+        const requestData = {
+            model: modelId,
+            system: sharedSystemPrompt,
+            messages: [
+                { "role": "user", "content": paragraphs.map((p, i) => `${i + 1}. ${p.innerHTML}`).join('\n\n') }
+            ],
+            stream: false,
+            temperature: 1.0,
+            max_tokens: 4096,
+        };
+
+        const res = await new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: engineConfig.method,
+                url: engineConfig.url_api,
+                headers: { ...engineConfig.headers, 'x-api-key': apiKey },
+                data: JSON.stringify(requestData),
+                responseType: 'json',
+                timeout: 45000,
+                onload: resolve,
+                onerror: () => reject(new Error(`Key #${keyIndex + 1} 网络请求错误`)),
+                ontimeout: () => reject(new Error(`Key #${keyIndex + 1} 请求超时`))
+            });
+        });
+
+        if (res.status !== 200) {
+            let responseData = res.response;
+            if (typeof responseData === 'string') try { responseData = JSON.parse(responseData); } catch (e) {}
+            throw _handleAnthropicError(res, engineConfig.name, responseData);
+        }
+
+        return getNestedProperty(res.response, 'content[0].text');
+    }
+
+    /**
+     * 处理标准 Bearer Token 认证的 API 请求，通过调用通用 Key 获取函数实现轮询
      */
 	async function _handleStandardApiRequest(engineConfig, paragraphs, engineName) {
-		const { name, url_api, method, responseIdentifier, getRequestData } = engineConfig;
+		const { name, method, responseIdentifier, getRequestData } = engineConfig;
 
 		let headers = { ...engineConfig.headers };
-        const apiKey = GM_getValue(`${engineName.split('_')[0]}_api_key`);
-        if (!apiKey) {
-            const error = new Error(`请先在设置面板中设置 ${name} API Key`);
+        let finalUrl;
+
+        const { key: apiKey, index: keyIndex } = await _getApiKeyForService(engineName);
+        const serviceDisplayName = (engineMenuConfig[engineName]?.displayName) ||
+                                   (GM_getValue(CUSTOM_SERVICES_LIST_KEY, []).find(s => s.id === engineName)?.name) ||
+                                   engineName;
+
+        if (engineName.startsWith('custom_')) {
+            const services = GM_getValue(CUSTOM_SERVICES_LIST_KEY, []);
+            const service = services.find(s => s.id === engineName);
+            finalUrl = service ? service.url : null;
+        } else {
+            finalUrl = engineConfig.url_api;
+        }
+
+        if (!finalUrl) {
+            const error = new Error(`请先为服务“${serviceDisplayName}”设置接口地址`);
             error.noRetry = true;
             throw error;
         }
-        headers['Authorization'] = `Bearer ${apiKey}`;
 
-		const requestData = getRequestData(paragraphs);
+        if (apiKey) {
+            headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+
+		const requestData = getRequestData(paragraphs, engineName);
 
 		const res = await new Promise((resolve, reject) => {
 			GM_xmlhttpRequest({
-				method, url: url_api, headers, data: JSON.stringify(requestData),
+				method, url: finalUrl, headers, data: JSON.stringify(requestData),
 				responseType: 'json', timeout: 45000,
 				onload: resolve,
-				onerror: () => reject(new Error('网络请求错误')),
-				ontimeout: () => reject(new Error('请求超时'))
+				onerror: () => reject(new Error(`Key #${keyIndex + 1} 网络请求错误`)),
+				ontimeout: () => reject(new Error(`Key #${keyIndex + 1} 请求超时`))
 			});
 		});
 
@@ -7770,6 +8962,10 @@
                 userFriendlyError = `API Key 无效或缺失 (401)：请在设置面板中检查您的 ${name} API Key 是否正确填写。`;
                 error.noRetry = true;
                 break;
+            case 405:
+                userFriendlyError = `方法不允许 (405)：您配置的接口地址不支持 POST 请求。请检查 URL 是否为完整的聊天补全端点（通常以 /chat/completions 结尾）。`;
+                error.noRetry = true;
+                break;
             case 429:
                 userFriendlyError = `请求频率过高 (429)：已超出 API 的速率限制，脚本将在稍后自动重试。`;
                 error.type = 'rate_limit';
@@ -7781,6 +8977,125 @@
                 break;
             default:
                 userFriendlyError = `发生未知 API 错误 (代码: ${res.status})。`;
+                error.noRetry = true;
+                break;
+        }
+
+        error.message = userFriendlyError + `\n\n原始错误信息：\n${apiErrorMessage}`;
+        return error;
+    }
+
+    /**
+     * OpenAI 的专属错误处理策略
+     */
+    function _handleOpenaiError(res, name, responseData) {
+        const apiErrorMessage = getNestedProperty(responseData, 'error.message') || res.statusText;
+        const apiErrorCode = getNestedProperty(responseData, 'error.code');
+        let userFriendlyError;
+        const error = new Error();
+        error.noRetry = false;
+
+        switch (res.status) {
+            case 400:
+                if (apiErrorCode === 'model_not_found') {
+                    userFriendlyError = `模型不存在 (400)：您选择的模型当前不可用或您无权访问。请在设置中更换模型。`;
+                } else {
+                    userFriendlyError = `错误的请求 (400)：请求的格式或参数有误。`;
+                }
+                error.noRetry = true;
+                break;
+            case 401:
+                userFriendlyError = `API Key 无效或认证失败 (401)：请在设置面板中检查您的 ${name} API Key。`;
+                error.noRetry = true;
+                break;
+            case 403:
+                userFriendlyError = `权限被拒绝 (403)：您的 API Key 无权访问所请求的资源，或您所在的地区不受支持。`;
+                error.noRetry = true;
+                break;
+            case 404:
+                userFriendlyError = `资源未找到 (404)：请求的 API 端点不存在。`;
+                error.noRetry = true;
+                break;
+            case 429:
+                if (apiErrorCode === 'insufficient_quota') {
+                    userFriendlyError = `账户余额不足 (429)：您的 ${name} 账户已用尽信用点数或达到支出上限。请前往 OpenAI 官网检查您的账单详情。`;
+                    error.noRetry = true;
+                } else {
+                    userFriendlyError = `请求频率过高 (429)：已超出 API 的速率限制，脚本将在稍后自动重试。`;
+                    error.type = 'rate_limit';
+                }
+                break;
+            case 500:
+                userFriendlyError = `服务器内部错误 (500)：${name} 的服务器遇到问题，脚本将在稍后自动重试。`;
+                error.type = 'server_overloaded';
+                break;
+            case 503:
+                if (apiErrorMessage.includes('Slow Down')) {
+                    userFriendlyError = `服务暂时过载 (503 - Slow Down)：由于您的请求速率突然增加，服务暂时受到影响。请稍等片刻，脚本将自动重试。`;
+                } else {
+                    userFriendlyError = `服务器当前过载 (503)：${name} 的服务器正经历高流量，脚本将在稍后自动重试。`;
+                }
+                error.type = 'server_overloaded';
+                break;
+            default:
+                userFriendlyError = `发生未知 API 错误 (代码: ${res.status})。`;
+                error.noRetry = true;
+                break;
+        }
+
+        error.message = userFriendlyError + `\n\n原始错误信息：\n${apiErrorMessage}`;
+        return error;
+    }
+
+    /**
+     * Anthropic 的专属错误处理策略
+     */
+    function _handleAnthropicError(res, name, responseData) {
+        const apiErrorType = getNestedProperty(responseData, 'error.type');
+        const apiErrorMessage = getNestedProperty(responseData, 'error.message') || res.statusText;
+        let userFriendlyError;
+        const error = new Error();
+        error.noRetry = false;
+
+        switch (apiErrorType) {
+            case 'invalid_request_error':
+                userFriendlyError = `无效请求 (${res.status})：请求的格式或参数有误。如果问题持续，可能是模型名称不受支持或已更新。`;
+                error.noRetry = true;
+                break;
+            case 'authentication_error':
+                userFriendlyError = `API Key 无效或认证失败 (401)：请在设置面板中检查您的 ${name} API Key。`;
+                error.noRetry = true;
+                break;
+            case 'permission_error':
+                userFriendlyError = `权限被拒绝 (403)：您的 API Key 无权访问所请求的资源。`;
+                error.noRetry = true;
+                break;
+            case 'not_found_error':
+                userFriendlyError = `资源未找到 (404)：请求的 API 端点或模型不存在。`;
+                error.noRetry = true;
+                break;
+            case 'request_too_large':
+                userFriendlyError = `请求内容过长 (413)：发送的文本量超过了 API 的单次请求上限。`;
+                error.noRetry = true;
+                break;
+            case 'rate_limit_error':
+                userFriendlyError = `请求频率过高 (429)：已超出 API 的速率限制，脚本将在稍后自动重试。`;
+                error.type = 'rate_limit';
+                break;
+            case 'api_error':
+                userFriendlyError = `服务器内部错误 (500)：${name} 的服务器遇到问题，脚本将在稍后自动重试。`;
+                error.type = 'server_overloaded';
+                break;
+            case 'overloaded_error':
+                userFriendlyError = `服务器过载 (529)：${name} 的服务器当前负载过高，脚本将在稍后自动重试。`;
+                error.type = 'server_overloaded';
+                break;
+            default:
+                if (res.status === 413) {
+                    userFriendlyError = `请求内容过长 (413)：发送的文本量超过了 API 的单次请求上限。`;
+                } else {
+                    userFriendlyError = `发生未知 API 错误 (代码: ${res.status})。`;
+                }
                 error.noRetry = true;
                 break;
         }
@@ -8008,6 +9323,8 @@
         return error;
     }
 
+    API_ERROR_HANDLERS['openai'] = _handleOpenaiError;
+    API_ERROR_HANDLERS['anthropic'] = _handleAnthropicError;
     API_ERROR_HANDLERS['zhipu_ai'] = _handleZhipuAiError;
     API_ERROR_HANDLERS['deepseek_ai'] = _handleDeepseekAiError;
     API_ERROR_HANDLERS['groq_ai'] = _handleTogetherAiError;
@@ -8015,44 +9332,29 @@
     API_ERROR_HANDLERS['cerebras_ai'] = _handleTogetherAiError;
 
     /**
-     * 为术语创建带有单词边界、全角/半角不敏感，且将空格与连字符视为等效分隔符的正则表达式模式
+     * 为词形变体创建正则表达式
      */
-    function createSmartRegexPattern(term) {
-        if (!term) return '';
-
-        const combinedSeparatorPattern = '[\\s-－﹣—–]+';
-        const symbolMap = {
-            '(': '[\\(（]', ')': '[\\)）]',
-            '[': '[\\[［]', ']': '[\\]］]',
-            '{': '[\\{｛]', '}': '[\\}｝]',
-            '.': '[\\.。]', ':': '[:：]',
-            ',': '[,，]', ';': '[;；]',
-            '?': '[\\?？]', '!': '[!！]',
-            ' ': combinedSeparatorPattern,
-            '-': combinedSeparatorPattern
-        };
-
-        let pattern = '';
-        for (const char of term) {
-            const mappedPattern = symbolMap[char];
-            if (mappedPattern) {
-                if (mappedPattern === combinedSeparatorPattern && pattern.endsWith(combinedSeparatorPattern)) {
-                    continue;
-                }
-                pattern += mappedPattern;
-            } else {
-                pattern += char.replace(/([.*+?^${}|])/g, '\\$&');
-            }
+    function createSmartRegexPattern(forms) {
+        if (!forms || forms.size === 0) {
+            return '';
         }
 
-        const wordCharRegex = /^[a-zA-Z0-9_]/;
-        const startsWithWordChar = wordCharRegex.test(term);
-        const endsWithWordChar = wordCharRegex.test(term.slice(-1));
+        const sortedForms = Array.from(forms).sort((a, b) => b.length - a.length);
+
+        const escapedForms = sortedForms.map(form =>
+            form.replace(/([.*+?^${}()|[\]\\])/g, '\\$&')
+        );
+
+        const pattern = escapedForms.join('|');
+
+        const longestForm = sortedForms[0];
+        const startsWithWordChar = /^[a-zA-Z0-9_]/.test(longestForm);
+        const endsWithWordChar = /[a-zA-Z0-9_]$/.test(longestForm);
 
         const prefix = startsWithWordChar ? '\\b' : '';
         const suffix = endsWithWordChar ? '\\b' : '';
 
-        return `${prefix}${pattern}${suffix}`;
+        return `${prefix}(?:${pattern})${suffix}`;
     }
 
     /**
@@ -8068,18 +9370,146 @@
     }
 
     /**
-     * 在DOM节点内查找一个由多部分文本组成的序列
+     * 在DOM节点内查找一个由多部分文本组成的、有序的邻近序列
      */
-    function findDOMSequence(rootNode, rule) {
-        const { parts, isGeneral } = rule;
-        const fullTextToMatch = parts.join(' ');
-
-        const textMap = [];
-        let currentText = '';
+    function findOrderedDOMSequence(rootNode, rule) {
+        const { parts: partsWithForms, isGeneral } = rule;
 
         const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT, {
             acceptNode: (node) => {
-                if (node.parentElement.closest('[data-glossary-applied="true"]') || /^\s*$/.test(node.nodeValue)) {
+                if (node.parentElement.closest('[data-glossary-applied="true"]')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        });
+
+        const textNodes = [];
+        let node;
+        while ((node = walker.nextNode())) {
+            textNodes.push(node);
+        }
+
+        if (textNodes.length === 0) return null;
+
+        for (let i = 0; i < textNodes.length; i++) {
+            for (let j = 0; j < textNodes[i].nodeValue.length; j++) {
+                const matchResult = findSequenceFromPosition(i, j);
+                if (matchResult) {
+                    return matchResult;
+                }
+            }
+        }
+
+        return null;
+
+        function findSequenceFromPosition(startNodeIndex, startOffset) {
+            let currentNodeIndex = startNodeIndex;
+            let currentOffset = startOffset;
+            const matchedWords = [];
+            const endPoints = [];
+
+            for (let partIndex = 0; partIndex < partsWithForms.length; partIndex++) {
+                const currentPartForms = partsWithForms[partIndex].sort((a, b) => b.length - a.length);
+                let bestMatch = null;
+
+                let searchStr = textNodes[currentNodeIndex].nodeValue.substring(currentOffset);
+                let lookaheadIndex = currentNodeIndex + 1;
+                while (lookaheadIndex < textNodes.length && searchStr.length < 200) {
+                    searchStr += textNodes[lookaheadIndex].nodeValue;
+                    lookaheadIndex++;
+                }
+
+                const textToSearch = isGeneral ? searchStr.toLowerCase() : searchStr;
+
+                for (const form of currentPartForms) {
+                    const formToMatch = isGeneral ? form.toLowerCase() : form;
+                    if (textToSearch.startsWith(formToMatch)) {
+                        const prevChar = (startNodeIndex === 0 && startOffset === 0) ? ' ' : textNodes[startNodeIndex].nodeValue[startOffset - 1] || ' ';
+                        if (partIndex === 0 && /[a-zA-Z0-9]/.test(prevChar)) {
+                            continue;
+                        }
+                        bestMatch = form;
+                        break;
+                    }
+                }
+
+                if (bestMatch) {
+                    matchedWords.push(bestMatch);
+                    let consumedLength = bestMatch.length;
+                    currentOffset += consumedLength;
+
+                    while (currentOffset >= textNodes[currentNodeIndex].nodeValue.length && currentNodeIndex < textNodes.length - 1) {
+                        currentOffset -= textNodes[currentNodeIndex].nodeValue.length;
+                        currentNodeIndex++;
+                    }
+                    endPoints.push({ nodeIndex: currentNodeIndex, offset: currentOffset });
+
+                    if (partIndex < partsWithForms.length - 1) {
+                        let separatorFound = false;
+
+                        while (currentNodeIndex < textNodes.length) {
+                            const remainingInNode = textNodes[currentNodeIndex].nodeValue.substring(currentOffset);
+                            const separatorMatch = remainingInNode.match(/^[\s-－﹣—–]+/);
+
+                            if (separatorMatch) {
+                                currentOffset += separatorMatch[0].length;
+                                separatorFound = true;
+                                break;
+                            }
+
+                            if (remainingInNode.trim() !== '') {
+                                return null;
+                            }
+
+                            currentNodeIndex++;
+                            currentOffset = 0;
+                            if (currentNodeIndex < textNodes.length) {
+                                separatorFound = true;
+                            } else {
+                                return null;
+                            }
+                        }
+                        if (!separatorFound) return null;
+                    }
+                } else {
+                    return null;
+                }
+            }
+
+            const finalEndPoint = endPoints[endPoints.length - 1];
+            const nextChar = textNodes[finalEndPoint.nodeIndex].nodeValue[finalEndPoint.offset] || ' ';
+            if (/[a-zA-Z0-9]/.test(nextChar)) {
+                return null;
+            }
+
+            return {
+                startNode: textNodes[startNodeIndex],
+                startOffset: startOffset,
+                endNode: textNodes[finalEndPoint.nodeIndex],
+                endOffset: finalEndPoint.offset,
+                matchedWords: matchedWords
+            };
+        }
+    }
+
+    /**
+     * 在DOM节点内查找一个由多部分文本组成的、无序但邻近的序列
+     */
+    function findUnorderedDOMSequence(rootNode, rule) {
+        const { parts: partsWithForms, isGeneral } = rule;
+        const HTML_TAG_PLACEHOLDER = '\u0001';
+        const ALLOWED_SEPARATORS_REGEX = /^[\s\u0001-－﹣—–]*$/;
+        const WORD_CHAR_REGEX = /[a-zA-Z0-9]/;
+        const MAX_DISTANCE_FACTOR = 2.5;
+        const MAX_DISTANCE_BASE = 30;
+
+        const textMap = [];
+        let normalizedText = '';
+
+        const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+            acceptNode: (node) => {
+                if (node.parentElement.closest('[data-glossary-applied="true"]')) {
                     return NodeFilter.FILTER_REJECT;
                 }
                 return NodeFilter.FILTER_ACCEPT;
@@ -8087,44 +9517,99 @@
         });
 
         let node;
-        while (node = walker.nextNode()) {
-            const nodeValue = node.nodeValue;
-            for (let i = 0; i < nodeValue.length; i++) {
-                textMap.push({ node: node, offset: i });
-            }
-            currentText += nodeValue;
-        }
-
-        const normalizedText = (isGeneral ? currentText.toLowerCase() : currentText).replace(/[\s-－﹣—–]+/g, ' ');
-        const normalizedTerm = (isGeneral ? fullTextToMatch.toLowerCase() : fullTextToMatch);
-
-        let searchFrom = 0;
-        let matchIndex;
-
-        while ((matchIndex = normalizedText.indexOf(normalizedTerm, searchFrom)) !== -1) {
-            const endMatchIndex = matchIndex + normalizedTerm.length;
-
-            const start = textMap[matchIndex];
-            const end = textMap[endMatchIndex - 1];
-
-            if (start && end) {
-                const prevCharIndex = matchIndex - 1;
-                const nextCharIndex = endMatchIndex;
-
-                const isStartBoundary = (prevCharIndex < 0) || /^\s$/.test(normalizedText[prevCharIndex]);
-                const isEndBoundary = (nextCharIndex >= normalizedText.length) || /^[\s.,!?;:)]$/.test(normalizedText[nextCharIndex]);
-
-                if (isStartBoundary && isEndBoundary) {
-                    return {
-                        startNode: start.node,
-                        startOffset: start.offset,
-                        endNode: end.node,
-                        endOffset: end.offset + 1,
-                    };
+        while ((node = walker.nextNode())) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                const nodeValue = node.nodeValue;
+                for (let i = 0; i < nodeValue.length; i++) {
+                    textMap.push({ node: node, offset: i });
+                }
+                normalizedText += nodeValue;
+            } else if (node.nodeType === Node.ELEMENT_NODE) {
+                if (['EM', 'STRONG', 'B', 'I', 'U', 'SPAN', 'CODE'].includes(node.tagName)) {
+                    textMap.push({ node: node, offset: -1 });
+                    normalizedText += HTML_TAG_PLACEHOLDER;
                 }
             }
-            searchFrom = matchIndex + 1;
         }
+
+        if (!normalizedText.trim()) return null;
+
+        const searchText = isGeneral ? normalizedText.toLowerCase() : normalizedText;
+        const originalTermLength = partsWithForms.map(p => p[0]).join(' ').length;
+        const maxDistance = Math.max(originalTermLength * MAX_DISTANCE_FACTOR, MAX_DISTANCE_BASE);
+
+        const partPositions = partsWithForms.map(partSet => {
+            const positions = [];
+            for (const form of partSet) {
+                const term = isGeneral ? form.toLowerCase() : form;
+                let lastIndex = -1;
+                while ((lastIndex = searchText.indexOf(term, lastIndex + 1)) !== -1) {
+                    positions.push({ start: lastIndex, end: lastIndex + term.length });
+                }
+            }
+            return positions;
+        });
+
+        if (partPositions.some(p => p.length === 0)) {
+            return null;
+        }
+
+        function getCombinations(arr) {
+            if (arr.length === 1) {
+                return arr[0].map(item => [item]);
+            }
+            const result = [];
+            const allCasesOfRest = getCombinations(arr.slice(1));
+            for (let i = 0; i < allCasesOfRest.length; i++) {
+                for (let j = 0; j < arr[0].length; j++) {
+                    result.push([arr[0][j]].concat(allCasesOfRest[i]));
+                }
+            }
+            return result;
+        }
+
+        const allCombinations = getCombinations(partPositions);
+
+        for (const combination of allCombinations) {
+            combination.sort((a, b) => a.start - b.start);
+
+            const overallStart = combination[0].start;
+            const overallEnd = combination[combination.length - 1].end;
+
+            if (overallEnd - overallStart > maxDistance) {
+                continue;
+            }
+
+            let isValid = true;
+            for (let i = 0; i < combination.length - 1; i++) {
+                const betweenText = normalizedText.substring(combination[i].end, combination[i + 1].start);
+                if (!ALLOWED_SEPARATORS_REGEX.test(betweenText)) {
+                    isValid = false;
+                    break;
+                }
+            }
+
+            if (isValid) {
+                const prevChar = normalizedText[overallStart - 1];
+                const nextChar = normalizedText[overallEnd];
+                const startBoundaryOK = !prevChar || !WORD_CHAR_REGEX.test(prevChar);
+                const endBoundaryOK = !nextChar || !WORD_CHAR_REGEX.test(nextChar);
+
+                if (startBoundaryOK && endBoundaryOK) {
+                    const startMapping = textMap[overallStart];
+                    const endMapping = textMap[overallEnd - 1];
+                    if (startMapping && endMapping) {
+                        return {
+                            startNode: startMapping.node,
+                            startOffset: startMapping.offset,
+                            endNode: endMapping.node,
+                            endOffset: endMapping.offset + 1
+                        };
+                    }
+                }
+            }
+        }
+
         return null;
     }
 
@@ -8140,7 +9625,13 @@
             do {
                 domReplaced = false;
                 for (const rule of domRules) {
-                    const match = findDOMSequence(clone, rule);
+                    let match;
+                    if (rule.isUnordered) {
+                        match = findUnorderedDOMSequence(clone, rule);
+                    } else {
+                        match = findOrderedDOMSequence(clone, rule);
+                    }
+
                     if (match) {
                         const range = document.createRange();
                         range.setStart(match.startNode, match.startOffset);
@@ -8153,12 +9644,13 @@
 
                         const finalValue = rule.type === 'forbidden' ? originalHTML : rule.replacement;
                         let placeholder;
+
                         if (placeholderCache.has(finalValue)) {
                             placeholder = placeholderCache.get(finalValue);
                         } else {
                             placeholder = `ph_${generateRandomPlaceholder()}`;
                             placeholderCache.set(finalValue, placeholder);
-                            placeholders.set(placeholder, finalValue);
+                            placeholders.set(placeholder, { value: finalValue, rule: rule, originalHTML: originalHTML });
                         }
 
                         const placeholderNode = document.createTextNode(placeholder);
@@ -8186,33 +9678,39 @@
             let n;
             while (n = walker.nextNode()) textNodes.push(n);
 
+            const combinedRegex = new RegExp(regexRules.map(r => `(${r.regex.source})`).join('|'), 'g');
+
             textNodes.forEach(node => {
                 if (!node.parentNode) return;
-                let text = node.nodeValue;
-                const replacements = [];
 
-                for (const rule of regexRules) {
-                    text = text.replace(rule.regex, (match) => {
-                        const id = `__REPL_${replacements.length}__`;
-                        replacements.push({ id, match, rule });
-                        return id;
-                    });
-                }
+                const text = node.nodeValue;
+                const matches = Array.from(text.matchAll(combinedRegex));
 
-                if (replacements.length > 0) {
+                if (matches.length > 0) {
                     const fragment = document.createDocumentFragment();
-                    const parts = text.split(/(__REPL_\d+__)/g);
-                    parts.forEach(part => {
-                        if (part.startsWith('__REPL_')) {
-                            const repl = replacements.find(r => r.id === part);
-                            if (repl) {
-                                const appliedNode = _applyRuleToTextMatch(repl.match, repl.rule, placeholders, placeholderCache, engineName);
-                                fragment.appendChild(appliedNode);
-                            }
-                        } else if (part) {
-                            fragment.appendChild(document.createTextNode(part));
+                    let lastIndex = 0;
+
+                    matches.forEach(match => {
+                        const matchedText = match[0];
+                        const matchIndex = match.index;
+
+                        if (matchIndex > lastIndex) {
+                            fragment.appendChild(document.createTextNode(text.substring(lastIndex, matchIndex)));
                         }
+
+                        const ruleIndex = match.slice(1).findIndex(g => g !== undefined);
+                        const rule = regexRules[ruleIndex];
+
+                        const placeholderNode = _applyRuleToTextMatch(matchedText, rule, placeholders, placeholderCache, engineName);
+                        fragment.appendChild(placeholderNode);
+
+                        lastIndex = matchIndex + matchedText.length;
                     });
+
+                    if (lastIndex < text.length) {
+                        fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
+                    }
+
                     node.parentNode.replaceChild(fragment, node);
                 }
             });
@@ -8231,10 +9729,36 @@
         } else {
             placeholder = `ph_${generateRandomPlaceholder()}`;
             placeholderCache.set(finalValue, placeholder);
-            placeholders.set(placeholder, finalValue);
+            placeholders.set(placeholder, { value: finalValue, rule: rule, originalHTML: match });
         }
 
         return document.createTextNode(placeholder);
+    }
+
+    /**
+     * 替换一个 DOM 节点并完整保留所有 HTML 标签结构
+     */
+    function replaceTextInNode(node, newText) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            node.nodeValue = newText;
+            return;
+        }
+
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        const textNodes = [];
+        let currentNode;
+        while ((currentNode = walker.nextNode())) {
+            textNodes.push(currentNode);
+        }
+
+        if (textNodes.length > 0) {
+            textNodes[0].nodeValue = newText;
+            for (let i = 1; i < textNodes.length; i++) {
+                textNodes[i].nodeValue = '';
+            }
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            node.textContent = newText;
+        }
     }
 
     /**
@@ -8255,16 +9779,73 @@
                 });
             }
         } catch (e) {
+            console.warn('Error during placeholder advanced purge:', e);
         }
 
         if (placeholders.size === 0) {
             return applyPostTranslationReplacements(processedText);
         }
 
-        for (const [placeholder, replacement] of placeholders.entries()) {
+        for (const [placeholder, data] of placeholders.entries()) {
+            const { value: replacement, originalHTML, rule } = data;
             const escapedPlaceholder = placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-            const plainRegex = new RegExp(escapedPlaceholder, 'g');
-            processedText = processedText.replace(plainRegex, replacement);
+            const regex = new RegExp(escapedPlaceholder, 'g');
+
+            if (DEBUG_MODE) {
+                console.group(`[术语表回填] 处理占位符: ${placeholder}`);
+                console.log(`  - 规则类型: ${rule.matchStrategy}`);
+                console.log(`  - 原始术语: "${rule.originalTerm}"`);
+                console.log(`  - 原始HTML/文本:`, originalHTML);
+                console.log(`  - 目标译文/内容:`, replacement);
+            }
+
+            if (rule.matchStrategy === 'dom' && originalHTML) {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = originalHTML;
+
+                const htmlChunks = Array.from(tempDiv.childNodes).filter(node =>
+                    !(node.nodeType === Node.TEXT_NODE && !node.nodeValue.trim())
+                );
+
+                const separator = replacement.includes('·') || replacement.includes('・') ? /[·・]/ : /[\s-－﹣—–]+/;
+                const joinSeparator = replacement.includes('·') || replacement.includes('・') ? '·' : ' ';
+                const translationParts = replacement.split(separator);
+
+                if (DEBUG_MODE) {
+                    console.log(`  - 原始HTML被分解为 ${htmlChunks.length} 个结构块:`, htmlChunks.map(c => c.cloneNode(true)));
+                    console.log(`  - 译文被分解为 ${translationParts.length} 个部分 (使用分隔符 "${separator}"):`, translationParts);
+                }
+
+                if (htmlChunks.length === translationParts.length) {
+                    if (DEBUG_MODE) console.log(`  - 验证通过：结构块数量与译文部分数量匹配。开始注入...`);
+                    htmlChunks.forEach((chunk, index) => {
+                        const part = translationParts[index];
+                        if (DEBUG_MODE) console.log(`    - 注入部分 #${index + 1}: 将 "${part}" 注入到`, chunk.cloneNode(true));
+                        replaceTextInNode(chunk, part);
+                    });
+
+                    const finalHTML = htmlChunks.map(chunk => {
+                        return chunk.nodeType === Node.ELEMENT_NODE ? chunk.outerHTML : chunk.nodeValue;
+                    }).join(joinSeparator);
+
+                    if (DEBUG_MODE) console.log(`  - 重组后的最终HTML:`, finalHTML);
+                    processedText = processedText.replace(regex, finalHTML);
+                } else {
+                    if (DEBUG_MODE) {
+                        console.warn(`  - [回退] HTML结构块数量 (${htmlChunks.length}) 与译文部分数量 (${translationParts.length}) 不匹配！`);
+                        console.warn(`  - 执行安全回退：将完整译文注入，可能会丢失内部格式。`);
+                    }
+                    tempDiv.innerHTML = originalHTML;
+                    tempDiv.textContent = replacement;
+                    const fallbackHTML = tempDiv.innerHTML;
+                    if (DEBUG_MODE) console.log(`  - 回退生成的HTML:`, fallbackHTML);
+                    processedText = processedText.replace(regex, fallbackHTML);
+                }
+            } else {
+                if (DEBUG_MODE) console.log(`  - (Regex策略) 直接替换为目标内容。`);
+                processedText = processedText.replace(regex, replacement);
+            }
+            if (DEBUG_MODE) console.groupEnd();
         }
 
         return applyPostTranslationReplacements(processedText);
@@ -8300,7 +9881,7 @@
 
         for (let retryCount = 0; retryCount <= maxRetries; retryCount++) {
             try {
-                const rules = buildPrioritizedGlossaryMaps();
+                const rules = getGlossaryRules();
                 const placeholders = new Map();
                 const placeholderCache = new Map();
 
@@ -8380,16 +9961,20 @@
                 const restoredTranslation = _postprocessAndRestoreText(combinedTranslation, placeholders, engineName);
 
                 let translatedParts = [];
-                const regex = /\d+\.\s*([\s\S]*?)(?=\n\d+\.|$)/g;
-                let match;
-                while ((match = regex.exec(restoredTranslation)) !== null) {
-                    translatedParts.push(match[1].trim());
-                }
+                if (contentToTranslate.length === 1 && !restoredTranslation.trim().startsWith('1.')) {
+                    translatedParts.push(restoredTranslation.trim());
+                } else {
+                    const regex = /\d+\.\s*([\s\S]*?)(?=\n\d+\.|$)/g;
+                    let match;
+                    while ((match = regex.exec(restoredTranslation)) !== null) {
+                        translatedParts.push(match[1].trim());
+                    }
 
-                if (translatedParts.length !== contentToTranslate.length && restoredTranslation.includes('\n')) {
-                    const potentialParts = restoredTranslation.split('\n').filter(p => p.trim().length > 0);
-                    if (potentialParts.length === contentToTranslate.length) {
-                        translatedParts = potentialParts.map(p => p.replace(/^\d+\.\s*/, '').trim());
+                    if (translatedParts.length !== contentToTranslate.length && restoredTranslation.includes('\n')) {
+                        const potentialParts = restoredTranslation.split('\n').filter(p => p.trim().length > 0);
+                        if (potentialParts.length === contentToTranslate.length) {
+                            translatedParts = potentialParts.map(p => p.replace(/^\d+\.\s*/, '').trim());
+                        }
                     }
                 }
 
@@ -8413,11 +9998,17 @@
                 return finalResults;
 
             } catch (e) {
+                if (DEBUG_MODE) {
+                    console.error(`翻译尝试 #${retryCount + 1} 失败:`, e);
+                }
                 if (retryCount < maxRetries) {
                     await sleep(500 * (retryCount + 1));
                     continue;
                 } else {
                     if (e.message.includes('分段数量不匹配') && paragraphs.length > 1) {
+                        if (DEBUG_MODE) {
+                            console.warn('批量翻译失败，正在尝试逐段回退翻译...');
+                        }
                         const fallbackResults = new Map();
                         for (const p of paragraphs) {
                             const singleResultMap = await translateParagraphs([p], { maxRetries: 0 });
@@ -8448,6 +10039,9 @@
                             }
                         }
                     });
+                    if (DEBUG_MODE) {
+                        console.error('所有重试均失败，返回部分或错误结果。');
+                    }
                     return finalResults;
                 }
             }
@@ -8455,9 +10049,102 @@
     }
 
     /**
-     * 翻译引擎（简介、注释、评论等）
+     * 创建并返回一个独立的翻译任务控制实例
      */
-    async function runTranslationEngineForBlock(containerElement, onComplete) {
+    function createTranslationController(options) {
+        const { containerElement, buttonWrapper, originalButtonText, isLazyLoad } = options;
+
+        const controller = {
+            state: 'idle',
+            observer: null,
+            isCancellationRequested: false,
+
+            updateButtonState: function(text, stateClass = '') {
+                if (buttonWrapper) {
+                    const button = buttonWrapper.querySelector('div');
+                    if (button) {
+                        button.textContent = text;
+                    }
+                    buttonWrapper.className = `translate-me-ao3-wrapper ${stateClass}`;
+                }
+            },
+
+            start: function() {
+                if (this.state === 'running') return;
+
+                this.state = 'running';
+                this.isCancellationRequested = false;
+                this.updateButtonState('翻译中…', 'state-running');
+
+                const onComplete = () => {
+                    if (!this.isCancellationRequested) {
+                        this.state = 'complete';
+                        this.updateButtonState('清除译文', 'state-complete');
+                    }
+                };
+
+                if (isLazyLoad) {
+                    this.observer = runTranslationEngineWithObserver({
+                        containerElement: containerElement,
+                        isCancelled: () => this.isCancellationRequested,
+                        onProgress: () => {},
+                        onComplete: onComplete
+                    });
+                } else {
+                    runTranslationEngineForBlock(containerElement, () => this.isCancellationRequested, onComplete);
+                }
+            },
+
+            stop: function() {
+                if (this.state !== 'running') return;
+
+                this.state = 'paused';
+                this.isCancellationRequested = true;
+                if (this.observer) {
+                    this.observer.disconnect();
+                    this.observer = null;
+                }
+                this.updateButtonState(originalButtonText, 'state-idle');
+            },
+
+            clear: function() {
+                this.stop();
+
+                const translationNodes = containerElement.querySelectorAll('.translated-by-ao3-script, .translated-by-ao3-script-error');
+                translationNodes.forEach(node => node.remove());
+
+                containerElement.querySelectorAll('[data-translation-state="translated"]').forEach(originalUnit => {
+                    originalUnit.style.display = '';
+                    delete originalUnit.dataset.translationState;
+                });
+
+                this.state = 'idle';
+                this.updateButtonState(originalButtonText, 'state-idle');
+            },
+
+            handleClick: function() {
+                switch (this.state) {
+                    case 'idle':
+                    case 'paused':
+                        this.start();
+                        break;
+                    case 'running':
+                        this.stop();
+                        break;
+                    case 'complete':
+                        this.clear();
+                        break;
+                }
+            }
+        };
+
+        return controller;
+    }
+
+    /**
+     * 翻译引擎（用于简介、注释、评论等区域）
+     */
+    async function runTranslationEngineForBlock(containerElement, isCancelled, onComplete) {
         const translatableSelectors = 'p, blockquote, li, h1, h2, h3:not(.landmark), h4, h5, h6';
         let allPotentialUnits = Array.from(containerElement.querySelectorAll(translatableSelectors));
 
@@ -8466,14 +10153,10 @@
         }
 
         const skippableHeaders = ['Summary', 'Notes', 'Work Text'];
-        const candidateUnits = allPotentialUnits.filter(p => !skippableHeaders.includes(p.textContent.trim()));
-
-        const units = [];
-        for (const unit of candidateUnits) {
-            if (!unit.querySelector(translatableSelectors)) {
-                units.push(unit);
-            }
-        }
+        const units = allPotentialUnits.filter(p =>
+            !skippableHeaders.includes(p.textContent.trim()) &&
+            !p.querySelector(translatableSelectors)
+        );
 
         if (units.length === 0) {
             if (onComplete) onComplete();
@@ -8483,6 +10166,13 @@
         units.forEach(unit => unit.dataset.translationState = 'translating');
 
         const translationResults = await translateParagraphs(units);
+
+        if (isCancelled()) {
+            units.forEach(unit => delete unit.dataset.translationState);
+            return;
+        }
+
+        const currentMode = GM_getValue('translation_display_mode', 'bilingual');
 
         units.forEach(unit => {
             const result = translationResults.get(unit);
@@ -8494,6 +10184,9 @@
                 if (result.status === 'success') {
                     transNode.className = 'translated-by-ao3-script';
                     unit.dataset.translationState = 'translated';
+                    if (currentMode === 'translation_only') {
+                        unit.style.display = 'none';
+                    }
                 } else {
                     transNode.className = 'translated-by-ao3-script-error';
                     unit.dataset.translationState = 'error';
@@ -8510,82 +10203,15 @@
     }
 
     /**
-     * 创建并返回一个独立的翻译任务状态管理实例。
-     */
-    function createMainTextTranslator() {
-        return {
-            state: 'idle',
-            observer: null,
-            isCancellationRequested: false,
-            buttonWrapper: null,
-            containerElement: null,
-
-            start: function(container, wrapper) {
-                if (this.state === 'running') return;
-
-                this.state = 'running';
-                this.isCancellationRequested = false;
-                this.containerElement = container;
-                this.buttonWrapper = wrapper;
-
-                this.observer = runTranslationEngineWithObserver({
-                    containerElement: this.containerElement,
-                    isCancelled: () => this.isCancellationRequested,
-                    onProgress: (translated, total) => {
-                    },
-                    onComplete: () => {
-                        if (!this.isCancellationRequested) {
-                            this.state = 'complete';
-                            this._updateButtonState('已翻译');
-                        }
-                    }
-                });
-            },
-
-            stop: function() {
-                if (this.state !== 'running') return;
-
-                this.state = 'paused';
-                this.isCancellationRequested = true;
-                if (this.observer) {
-                    this.observer.disconnect();
-                }
-                this.observer = null;
-            },
-
-            clear: function() {
-                this.stop();
-
-                if (this.containerElement) {
-                    const translationNodes = this.containerElement.querySelectorAll('.translated-by-ao3-script, .translated-by-ao3-script-error');
-                    translationNodes.forEach(node => node.remove());
-
-                    this.containerElement.querySelectorAll('[data-translation-state="translated"]').forEach(originalUnit => {
-                        originalUnit.style.display = '';
-                        delete originalUnit.dataset.translationState;
-                    });
-                }
-
-                this.state = 'idle';
-            },
-
-            _updateButtonState: function(text) {
-                if (this.buttonWrapper) {
-                    const button = this.buttonWrapper.querySelector('div');
-                    if (button) {
-                        button.textContent = text;
-                    }
-                }
-            }
-        };
-    }
-
-    /**
      * 翻译引擎（懒加载模式）
      */
     function runTranslationEngineWithObserver(options) {
         const { containerElement, isCancelled, onProgress, onComplete } = options;
         const elementState = new WeakMap();
+        let isProcessing = false;
+        const translationQueue = new Set();
+        let scheduleTimeout = null;
+        let flushTimeout = null;
 
         function preProcessAndGetUnits(container) {
             const elementsToProcess = container.querySelectorAll('p, blockquote');
@@ -8637,11 +10263,6 @@
             return null;
         }
 
-        let isProcessing = false;
-        const translationQueue = new Set();
-        let scheduleTimeout = null;
-        let flushTimeout = null;
-
         const isInViewport = (el) => {
             const rect = el.getBoundingClientRect();
             return (rect.top < window.innerHeight && rect.bottom >= 0);
@@ -8661,7 +10282,7 @@
 
             const runType = isFirstTranslationChunk ? 'first' : 'subsequent';
             const engineName = getValidEngineName();
-            const modelId = getCurrentModelId();
+            const modelId = getCurrentModelId(engineName);
             let paragraphLimit = CONFIG[runType === 'first' ? 'PARAGRAPH_LIMIT' : 'SUBSEQUENT_PARAGRAPH_LIMIT'];
             let chunkSize = CONFIG[runType === 'first' ? 'CHUNK_SIZE' : 'SUBSEQUENT_CHUNK_SIZE'];
             const priorityKeys = [modelId, engineName].filter(Boolean);
@@ -8706,54 +10327,53 @@
                 p.dataset.translationState = 'translating';
             });
 
-            const paragraphsToTranslate = chunkToSend.filter(p => p.tagName !== 'HR' && p.textContent.trim().length > 0);
-            const translationResults = paragraphsToTranslate.length > 0 ? await translateParagraphs(paragraphsToTranslate) : new Map();
+            try {
+                const paragraphsToTranslate = chunkToSend.filter(p => p.tagName !== 'HR' && p.textContent.trim().length > 0);
+                const translationResults = paragraphsToTranslate.length > 0 ? await translateParagraphs(paragraphsToTranslate) : new Map();
 
-            if (isCancelled()) {
-                isProcessing = false;
-                return;
-            }
+                if (isCancelled()) return;
 
-            for (const p of chunkToSend) {
-                observer.unobserve(p);
-                translatedUnits++;
+                for (const p of chunkToSend) {
+                    observer.unobserve(p);
+                    translatedUnits++;
 
-                if (p.tagName === 'HR' || p.textContent.trim().length === 0 || /^\s*[-—*~<>=.]{3,}\s*$/.test(p.textContent)) {
-                    p.dataset.translationState = 'translated';
-                    continue;
-                }
-                const result = translationResults.get(p);
-                if (result) {
-                    const transNode = document.createElement('div');
-                    const newTranslatedElement = p.cloneNode(false);
-                    newTranslatedElement.innerHTML = result.content;
-
-                    if (result.status === 'success') {
-                        transNode.className = 'translated-by-ao3-script';
-                        const currentMode = GM_getValue('translation_display_mode', 'bilingual');
-                        if (currentMode === 'translation_only') p.style.display = 'none';
+                    if (p.tagName === 'HR' || p.textContent.trim().length === 0 || /^\s*[-—*~<>=.]{3,}\s*$/.test(p.textContent)) {
                         p.dataset.translationState = 'translated';
+                        continue;
+                    }
+                    const result = translationResults.get(p);
+                    if (result) {
+                        const transNode = document.createElement('div');
+                        const newTranslatedElement = p.cloneNode(false);
+                        newTranslatedElement.innerHTML = result.content;
+
+                        if (result.status === 'success') {
+                            transNode.className = 'translated-by-ao3-script';
+                            const currentMode = GM_getValue('translation_display_mode', 'bilingual');
+                            if (currentMode === 'translation_only') p.style.display = 'none';
+                            p.dataset.translationState = 'translated';
+                        } else {
+                            transNode.className = 'translated-by-ao3-script-error';
+                            newTranslatedElement.innerHTML = `翻译失败：${result.content.replace('翻译失败：', '')}`;
+                            p.dataset.translationState = 'error';
+                        }
+                        transNode.appendChild(newTranslatedElement);
+                        transNode.style.cssText = 'margin-top: 0.25em; margin-bottom: 1em;';
+                        p.after(transNode);
                     } else {
-                        transNode.className = 'translated-by-ao3-script-error';
-                        newTranslatedElement.innerHTML = `翻译失败：${result.content.replace('翻译失败：', '')}`;
                         p.dataset.translationState = 'error';
                     }
-                    transNode.appendChild(newTranslatedElement);
-                    transNode.style.cssText = 'margin-top: 0.25em; margin-bottom: 1em;';
-                    p.after(transNode);
-                } else {
-                    p.dataset.translationState = 'error';
                 }
-            }
+            } finally {
+                isProcessing = false;
+                if (onProgress) onProgress(translatedUnits, totalUnits);
 
-            if (onProgress) onProgress(translatedUnits, totalUnits);
-            isProcessing = false;
-
-            if (translatedUnits >= totalUnits) {
-                if (onComplete) onComplete();
-                if (observer) observer.disconnect();
-            } else if (translationQueue.size > 0) {
-                scheduleProcessing(false);
+                if (translatedUnits >= totalUnits) {
+                    if (onComplete) onComplete();
+                    if (observer) observer.disconnect();
+                } else if (translationQueue.size > 0 && !isCancelled()) {
+                    scheduleProcessing(false);
+                }
             }
         };
 
@@ -8765,7 +10385,7 @@
 
         let effectiveRootMargin = CONFIG.LAZY_LOAD_ROOT_MARGIN;
         const engineName = getValidEngineName();
-        const modelId = getCurrentModelId();
+        const modelId = getCurrentModelId(engineName);
         const priorityKeys = [modelId, engineName].filter(Boolean);
         for (const key of priorityKeys) {
             const specificMargin = getNestedProperty(CONFIG.MODEL_SPECIFIC_LIMITS, `${key}.LAZY_LOAD_ROOT_MARGIN`);
@@ -8808,6 +10428,7 @@
     const POST_REPLACE_STRING_KEY = 'ao3_post_replace_string';
     const POST_REPLACE_MAP_KEY = 'ao3_post_replace_map';
     const LAST_SELECTED_GLOSSARY_KEY = 'ao3_last_selected_glossary_url';
+    const GLOSSARY_RULES_CACHE_KEY = 'ao3_glossary_rules_cache';
 
     /**
      * 解析自定义的、非 JSON 格式的术语表文本
@@ -8931,63 +10552,78 @@
     /**
      * 从 GitHub 或 jsDelivr 导入在线术语表文件
      */
-    function importOnlineGlossary(url, onCompleteCallback) {
-        if (!url || !url.trim()) { return; }
+    function importOnlineGlossary(url, options = {}) {
+        const { silent = false } = options;
 
-        const glossaryUrlRegex = /^(https:\/\/(raw\.githubusercontent\.com\/[^\/]+\/[^\/]+\/(?:refs\/heads\/)?[^\/]+|cdn\.jsdelivr\.net\/gh\/[^\/]+\/[^\/]+@[^\/]+)\/.+)$/;
-        if (!glossaryUrlRegex.test(url)) {
-            alert("链接格式不正确。请输入一个有效的 GitHub Raw 或 jsDelivr 链接。");
-            return;
-        }
-
-        const filename = url.split('/').pop();
-        const lastDotIndex = filename.lastIndexOf('.');
-        const baseName = (lastDotIndex > 0) ? filename.substring(0, lastDotIndex) : filename;
-        const glossaryName = decodeURIComponent(baseName);
-        notifyAndLog(`正在下载并导入 “${glossaryName}”...`);
-
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url: url,
-            onload: function(response) {
-                if (response.status !== 200) {
-                    notifyAndLog(`下载 “${glossaryName}” 失败！\n服务器返回状态码: ${response.status}`, '导入错误', 'error');
-                    return;
-                }
-                try {
-                    const onlineData = parseCustomGlossaryFormat(response.responseText);
-
-                    const allImportedGlossaries = GM_getValue(IMPORTED_GLOSSARY_KEY, {});
-                    allImportedGlossaries[url] = {
-                        terms: onlineData.terms,
-                        generalTerms: onlineData.generalTerms,
-                        multiPartTerms: onlineData.multiPartTerms,
-                        multiPartGeneralTerms: onlineData.multiPartGeneralTerms,
-                        forbiddenTerms: onlineData.forbiddenTerms,
-                        regexTerms: onlineData.regexTerms
-                    };
-                    GM_setValue(IMPORTED_GLOSSARY_KEY, allImportedGlossaries);
-
-                    const metadata = GM_getValue(GLOSSARY_METADATA_KEY, {});
-                    metadata[url] = { ...onlineData.metadata, last_imported: new Date().toISOString() };
-                    GM_setValue(GLOSSARY_METADATA_KEY, metadata);
-
-                    const importedCount = Object.keys(onlineData.terms).length + Object.keys(onlineData.generalTerms).length +
-                                          Object.keys(onlineData.multiPartTerms).length + Object.keys(onlineData.multiPartGeneralTerms).length +
-                                          onlineData.regexTerms.length;
-                    notifyAndLog(`已成功导入 “${glossaryName}” 术语表（v${onlineData.metadata.version}），共 ${importedCount} 个词条。`, '导入成功');
-
-                    if (typeof onCompleteCallback === 'function') {
-                        onCompleteCallback(url, glossaryName);
-                    }
-
-                } catch (e) {
-                    notifyAndLog(`导入 “${glossaryName}” 失败：${e.message}`, '处理错误', 'error');
-                }
-            },
-            onerror: function(error) {
-                notifyAndLog(`下载 “${glossaryName}” 失败！请检查网络连接或链接。`, '网络错误', 'error');
+        return new Promise((resolve) => {
+            if (!url || !url.trim()) {
+                return resolve({ success: false, name: '未知', message: 'URL 不能为空。' });
             }
+
+            const glossaryUrlRegex = /^(https:\/\/(raw\.githubusercontent\.com\/[^\/]+\/[^\/]+\/(?:refs\/heads\/)?[^\/]+|cdn\.jsdelivr\.net\/gh\/[^\/]+\/[^\/]+@[^\/]+)\/.+)$/;
+            if (!glossaryUrlRegex.test(url)) {
+                const message = "链接格式不正确。请输入一个有效的 GitHub Raw 或 jsDelivr 链接。";
+                if (!silent) alert(message);
+                return resolve({ success: false, name: url, message });
+            }
+
+            const filename = url.split('/').pop();
+            const lastDotIndex = filename.lastIndexOf('.');
+            const baseName = (lastDotIndex > 0) ? filename.substring(0, lastDotIndex) : filename;
+            const glossaryName = decodeURIComponent(baseName);
+
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                onload: function(response) {
+                    if (response.status !== 200) {
+                        const message = `下载 “${glossaryName}” 失败！服务器返回状态码: ${response.status}`;
+                        if (!silent) notifyAndLog(message, '导入错误', 'error');
+                        return resolve({ success: false, name: glossaryName, message });
+                    }
+                    try {
+                        const onlineData = parseCustomGlossaryFormat(response.responseText);
+
+                        const allImportedGlossaries = GM_getValue(IMPORTED_GLOSSARY_KEY, {});
+                        allImportedGlossaries[url] = {
+                            terms: onlineData.terms,
+                            generalTerms: onlineData.generalTerms,
+                            multiPartTerms: onlineData.multiPartTerms,
+                            multiPartGeneralTerms: onlineData.multiPartGeneralTerms,
+                            forbiddenTerms: onlineData.forbiddenTerms,
+                            regexTerms: onlineData.regexTerms
+                        };
+                        GM_setValue(IMPORTED_GLOSSARY_KEY, allImportedGlossaries);
+
+                        const metadata = GM_getValue(GLOSSARY_METADATA_KEY, {});
+                        const existingMetadata = metadata[url] || {};
+                        metadata[url] = { ...existingMetadata, ...onlineData.metadata, last_imported: getShanghaiTimeString() };
+                        if (typeof metadata[url].enabled !== 'boolean') {
+                            metadata[url].enabled = true;
+                        }
+                        GM_setValue(GLOSSARY_METADATA_KEY, metadata);
+                        invalidateGlossaryCache();
+
+                        const importedCount = Object.keys(onlineData.terms).length + Object.keys(onlineData.generalTerms).length +
+                                              Object.keys(onlineData.multiPartTerms).length + Object.keys(onlineData.multiPartGeneralTerms).length +
+                                              onlineData.regexTerms.length;
+                        const message = `已成功导入 “${glossaryName}” 术语表（v${onlineData.metadata.version}），共 ${importedCount} 个词条。`;
+                        if (!silent) notifyAndLog(message, '导入成功');
+
+                        resolve({ success: true, name: glossaryName, message });
+
+                    } catch (e) {
+                        const message = `导入 “${glossaryName}” 失败：${e.message}`;
+                        if (!silent) notifyAndLog(message, '处理错误', 'error');
+                        resolve({ success: false, name: glossaryName, message });
+                    }
+                },
+                onerror: function() {
+                    const message = `下载 “${glossaryName}” 失败！请检查网络连接或链接。`;
+                    if (!silent) notifyAndLog(message, '网络错误', 'error');
+                    resolve({ success: false, name: glossaryName, message });
+                }
+            });
         });
     }
 
@@ -9014,20 +10650,12 @@
     async function checkForGlossaryUpdates() {
         const metadata = GM_getValue(GLOSSARY_METADATA_KEY, {});
         const urls = Object.keys(metadata);
-        const LOG_PREFIX = '[术语表更新]';
 
         if (urls.length === 0) {
             return;
         }
 
-        console.info(`${LOG_PREFIX} 开始检查 ${urls.length} 个在线术语表...`);
-
-        let updatedCount = 0;
-        let failedCount = 0;
-
         for (const url of urls) {
-            const glossaryName = decodeURIComponent(url.split('/').pop().replace(/\.[^/.]+$/, ''));
-
             try {
                 const response = await new Promise((resolve, reject) => {
                     const urlWithCacheBust = url + '?t=' + new Date().getTime();
@@ -9044,9 +10672,7 @@
                 const onlineVersion = onlineData.metadata.version;
 
                 if (!localVersion || compareVersions(onlineVersion, localVersion) > 0) {
-                    const versionInfo = localVersion ? `v${localVersion} -> v${onlineVersion}` : `至 v${onlineVersion}`;
-                    console.info(`${LOG_PREFIX} 检测到“${glossaryName}”新版本，已成功更新：${versionInfo}`);
-
+                    const glossaryName = decodeURIComponent(url.split('/').pop().replace(/\.[^/.]+$/, ''));
                     const allImportedGlossaries = GM_getValue(IMPORTED_GLOSSARY_KEY, {});
                     allImportedGlossaries[url] = {
                         terms: onlineData.terms,
@@ -9056,28 +10682,56 @@
                         forbiddenTerms: onlineData.forbiddenTerms,
                         regexTerms: onlineData.regexTerms
                     };
-                    currentMetadata[url] = { ...onlineData.metadata, last_updated: new Date().toISOString() };
+                    currentMetadata[url] = { ...onlineData.metadata, last_updated: getShanghaiTimeString() };
 
                     GM_setValue(IMPORTED_GLOSSARY_KEY, allImportedGlossaries);
                     GM_setValue(GLOSSARY_METADATA_KEY, currentMetadata);
-
-                    updatedCount++;
+                    invalidateGlossaryCache();
 
                     GM_notification(`检测到术语表“${glossaryName}”新版本，已自动更新至 v${onlineVersion} 。`, 'AO3 汉化插件');
-
                 }
             } catch (e) {
-                failedCount++;
-                console.error(`${LOG_PREFIX} 检查“${glossaryName}”失败：${e.message}`);
+                if (DEBUG_MODE) {
+                    console.error(`检查术语表更新失败 (${url}):`, e);
+                }
             }
         }
-
-        const summaryMessage = `后台检查完成！总计 ${urls.length} 个，更新 ${updatedCount} 个，失败 ${failedCount} 个。`;
-        console.info(`${LOG_PREFIX} ${summaryMessage}`);
     }
 
     /**
-     * 构建并排序所有术语表规则，为翻译预处理做准备
+     * 获取术语表规则，优先从缓存读取
+     */
+    function getGlossaryRules() {
+        const cache = GM_getValue(GLOSSARY_RULES_CACHE_KEY, null);
+        const currentStateHash = generateGlossaryStateHash();
+
+        if (cache && cache.hash === currentStateHash && cache.rules) {
+            if (DEBUG_MODE) {
+                console.log('[缓存管理] 命中术语表规则缓存。');
+            }
+            return cache.rules.map(rule => {
+                if (rule.regex && typeof rule.regex === 'object' && rule.regex.source) {
+                    try {
+                        return { ...rule, regex: new RegExp(rule.regex.source, rule.regex.flags) };
+                    } catch (e) {
+                        if (DEBUG_MODE) {
+                            console.warn('从缓存重建正则表达式失败:', rule, e);
+                        }
+                        return null;
+                    }
+                }
+                return rule;
+            }).filter(Boolean);
+        }
+
+        if (DEBUG_MODE) {
+            console.log('[缓存管理] 缓存未命中或已失效，正在重建规则...');
+        }
+        return buildPrioritizedGlossaryMaps();
+    }
+
+    /**
+     * 构建并排序所有术语表规则
      */
     function buildPrioritizedGlossaryMaps() {
         const allImportedGlossaries = GM_getValue(IMPORTED_GLOSSARY_KEY, {});
@@ -9097,149 +10751,145 @@
             ONLINE_REGEX: 10000
         };
 
-        const normalizeWhitespace = (str) => str.replace(/[\s　]+/g, ' ').trim();
+        const termSeparatorRegex = /[\s-－﹣—–]+/;
 
         function addRule(ruleConfig) {
-            const { term, translation, type, isLocal, timestamp = 0 } = ruleConfig;
+            const { termForms, translation, type, timestamp = 0, source, originalTerm, isMultiPart, isGeneral, isUnordered = false } = ruleConfig;
 
             const basePriority = PRIORITY[type];
             if (basePriority === undefined) return;
 
-            const priority = basePriority + timestamp + term.length;
+            const lengthFactor = isMultiPart
+                ? termForms.map(forms => Array.from(forms)[0]).join(' ').length
+                : Array.from(termForms)[0].length;
+            const priority = basePriority + timestamp + lengthFactor;
+
             const isForbidden = type.includes('FORBIDDEN');
-            const isGeneral = type.includes('GENERAL');
-            const hasSpaces = term.includes(' ');
 
             try {
                 let ruleObject;
                 if (type === 'ONLINE_REGEX') {
                     ruleObject = {
-                        type: 'regex',
-                        matchStrategy: 'regex',
-                        regex: new RegExp(term, 'g'),
-                        replacement: translation,
-                        priority: priority,
-                        source: term
+                        type: 'regex', matchStrategy: 'regex',
+                        regex: new RegExp(termForms, 'g'),
+                        replacement: translation, priority, source, originalTerm
                     };
-                } else if (hasSpaces) {
+                } else if (isMultiPart) {
                     ruleObject = {
-                        type: isForbidden ? 'forbidden' : 'term',
-                        matchStrategy: 'dom',
-                        parts: term.split(' '),
-                        replacement: isForbidden ? term : translation,
-                        priority: priority,
-                        isGeneral: isGeneral,
-                        source: term
+                        type: isForbidden ? 'forbidden' : 'term', matchStrategy: 'dom',
+                        parts: termForms,
+                        replacement: isForbidden ? termForms.map(forms => Array.from(forms)[0]).join(' ') : translation,
+                        priority, isGeneral, source, originalTerm, isUnordered
                     };
                 } else {
-                    const pattern = createSmartRegexPattern(term);
+                    const pattern = createSmartRegexPattern(termForms);
                     const flags = isGeneral ? 'gi' : 'g';
                     ruleObject = {
-                        type: isForbidden ? 'forbidden' : 'term',
-                        matchStrategy: 'regex',
+                        type: isForbidden ? 'forbidden' : 'term', matchStrategy: 'regex',
                         regex: new RegExp(pattern, flags),
-                        replacement: isForbidden ? term : translation,
-                        priority: priority,
-                        source: term
+                        replacement: isForbidden ? Array.from(termForms)[0] : translation,
+                        priority, source, originalTerm
                     };
                 }
                 rules.push(ruleObject);
-
-                if (isLocal) {
-                    const forms = generateWordForms(term, { preserveCase: isForbidden });
-                    forms.forEach(f => processedLocalKeys.add(f.toLowerCase()));
-                }
             } catch (e) {
-                console.warn(`创建术语表规则失败: "${term}". 错误: ${e.message}`);
+                if (DEBUG_MODE) {
+                    console.warn(`创建术语表规则失败: "${originalTerm}". 错误: ${e.message}`);
+                }
             }
         }
 
-        const addTermAndItsForms = (term, translation, type, isLocal, timestamp = 0) => {
-            const normalizedTerm = normalizeWhitespace(term);
+        function processSinglePartTerm(term, translation, type, isLocal, timestamp, source, originalTerm) {
+            const normalizedTerm = term.trim();
             if (!normalizedTerm) return;
+
+            if (termSeparatorRegex.test(normalizedTerm)) {
+                processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm);
+                return;
+            }
 
             const isForbidden = type.includes('FORBIDDEN');
             const forms = generateWordForms(normalizedTerm, { preserveCase: isForbidden });
 
-            const process = (form) => {
-                addRule({ term: form, translation, type, isLocal, timestamp });
-            };
-
-            if (isLocal) {
-                forms.forEach(process);
-            } else {
-                if (processedLocalKeys.has(normalizedTerm.toLowerCase())) return;
-                forms.forEach(form => {
-                    if (!processedLocalKeys.has(form.toLowerCase())) {
-                        process(form);
-                    }
-                });
-            }
-        };
-
-        const addMultiPartRule = (term, translation, type, isLocal, timestamp = 0) => {
-            const normalizedTerm = normalizeWhitespace(term);
-            const normalizedTranslation = normalizeWhitespace(translation);
-            if (!normalizedTerm || !normalizedTranslation) return;
-
-            const termParts = normalizedTerm.split(' ');
-            if (termParts.length === 0) return;
-
             if (isLocal || !processedLocalKeys.has(normalizedTerm.toLowerCase())) {
-                const PARENT_RULE_PRIORITY_BONUS = 1000;
-                const isGeneral = type.includes('GENERAL');
-                const basePriority = (isLocal ? PRIORITY.LOCAL_TERM : PRIORITY.ONLINE_TERM) + timestamp + normalizedTerm.length;
+                addRule({ termForms: forms, translation, type, isLocal, timestamp, source, originalTerm, isMultiPart: false, isGeneral: type.includes('GENERAL') });
+                if (isLocal) {
+                    forms.forEach(f => processedLocalKeys.add(f.toLowerCase()));
+                }
+            }
+        }
 
-                const translationWithSeparators = normalizedTranslation.split(/([ ·　]+)/).filter(Boolean);
-                const translationParts = translationWithSeparators.filter(p => !/^[ ·　]+$/.test(p));
+        function processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm) {
+            const normalizedTerm = term.trim();
+            const isForbidden = type.includes('FORBIDDEN');
+            const normalizedTranslation = !isForbidden ? translation.trim() : null;
 
+            if (!normalizedTerm || (!normalizedTranslation && !isForbidden)) return;
+
+            const termParts = normalizedTerm.split(termSeparatorRegex);
+            if (termParts.length <= 1) {
+                processSinglePartTerm(term, translation, type, isLocal, timestamp, source, originalTerm);
+                return;
+            }
+
+            if (isLocal && processedLocalKeys.has(normalizedTerm.toLowerCase())) return;
+            if (!isLocal && processedLocalKeys.has(normalizedTerm.toLowerCase())) return;
+
+            const isGeneral = type.includes('GENERAL');
+            const termPartsWithForms = termParts.map(part =>
+                Array.from(generateWordForms(part, { preserveCase: isForbidden || isGeneral }))
+            );
+
+            const isUnorderedEligible = (type === 'LOCAL_TERM' || type === 'ONLINE_TERM');
+
+            addRule({
+                termForms: termPartsWithForms,
+                translation: normalizedTranslation,
+                type,
+                isLocal,
+                timestamp,
+                source,
+                originalTerm: originalTerm,
+                isMultiPart: true,
+                isGeneral,
+                isUnordered: isUnorderedEligible
+            });
+
+            if (!isForbidden && originalTerm.includes('=')) {
+                const translationParts = normalizedTranslation.split(/[\s·・]+/);
                 if (termParts.length === translationParts.length) {
                     termParts.forEach((part, i) => {
-                        addTermAndItsForms(part, translationParts[i], type, isLocal, timestamp);
+                        processSinglePartTerm(part, translationParts[i], type, isLocal, timestamp, source, `${part} -> ${translationParts[i]} (from: ${originalTerm})`);
                     });
-                } else {
-                    console.warn(`[术语表警告] 多词条 "${normalizedTerm}" 的原文和译文部分数量不匹配，将仅生成完整匹配规则。`);
-                }
-
-                const allTermPermutations = permutations(termParts);
-                allTermPermutations.forEach((perm, index) => {
-                    const isOriginalOrder = perm.join(' ') === normalizedTerm;
-                    rules.push({
-                        type: 'term',
-                        matchStrategy: 'dom',
-                        parts: perm,
-                        replacement: normalizedTranslation,
-                        priority: (isOriginalOrder ? basePriority : basePriority - (index + 1)) + PARENT_RULE_PRIORITY_BONUS,
-                        isGeneral: isGeneral,
-                        source: term
-                    });
-                });
-
-                if (isLocal) {
-                    processedLocalKeys.add(normalizedTerm.toLowerCase());
                 }
             }
-        };
+
+            if (isLocal) {
+                processedLocalKeys.add(normalizedTerm.toLowerCase());
+            }
+        }
 
         localForbiddenTerms.forEach(term => {
-            addTermAndItsForms(term, null, 'LOCAL_FORBIDDEN', true);
+            processSinglePartTerm(term, null, 'LOCAL_FORBIDDEN', true, 0, '本地禁翻', term);
         });
 
         if (localGlossaryString.trim()) {
-            localGlossaryString.split(/[，,]/).forEach(entry => {
-                const multiPartMatch = entry.match(/^\s*(.+?)\s*[=＝]\s*(.+?)\s*$/);
+            localGlossaryString.replace(/[，,]/g, '|||').split('|||').forEach(entry => {
+                const normalizedEntry = entry.replace(/[：＝]/g, (match) => ({ '：': ':', '＝': '=' }[match]));
+                const multiPartMatch = normalizedEntry.match(/^\s*(.+?)\s*=\s*(.+?)\s*$/);
                 if (multiPartMatch) {
-                    addMultiPartRule(multiPartMatch[1], multiPartMatch[2], 'LOCAL_TERM', true);
+                    processMultiPartTerm(multiPartMatch[1], multiPartMatch[2], 'LOCAL_TERM', true, 0, '本地术语', entry.trim());
                     return;
                 }
-                const singlePartMatch = entry.match(/^\s*(.+?)\s*[:：]\s*(.+?)\s*$/);
+                const singlePartMatch = normalizedEntry.match(/^\s*(.+?)\s*:\s*(.+?)\s*$/);
                 if (singlePartMatch) {
-                    addTermAndItsForms(singlePartMatch[1], singlePartMatch[2], 'LOCAL_TERM', true);
+                    processSinglePartTerm(singlePartMatch[1], singlePartMatch[2], 'LOCAL_TERM', true, 0, '本地术语', entry.trim());
                 }
             });
         }
 
         const sortedOnlineGlossaryUrls = Object.keys(allImportedGlossaries)
+            .filter(url => glossaryMetadata[url] && glossaryMetadata[url].enabled !== false)
             .sort((a, b) => {
                 const timeA = new Date(glossaryMetadata[a]?.last_imported || 0).getTime();
                 const timeB = new Date(glossaryMetadata[b]?.last_imported || 0).getTime();
@@ -9250,23 +10900,42 @@
             const g = allImportedGlossaries[url];
             if (!g) return;
             const timestamp = index * 0.001;
+            const sourceName = `在线: ${decodeURIComponent(url.split('/').pop())}`;
 
-            (g.forbiddenTerms || []).forEach(term => addTermAndItsForms(term, null, 'ONLINE_FORBIDDEN', false, timestamp));
-            Object.entries(g.terms || {}).forEach(([k, v]) => addTermAndItsForms(k, v, 'ONLINE_TERM', false, timestamp));
-            Object.entries(g.generalTerms || {}).forEach(([k, v]) => addTermAndItsForms(k, v, 'ONLINE_GENERAL_TERM', false, timestamp));
-            Object.entries(g.multiPartTerms || {}).forEach(([k, v]) => addMultiPartRule(k, v, 'ONLINE_TERM', false, timestamp));
-            Object.entries(g.multiPartGeneralTerms || {}).forEach(([k, v]) => addMultiPartRule(k, v, 'ONLINE_GENERAL_TERM', false, timestamp));
+            (g.forbiddenTerms || []).forEach(term => processSinglePartTerm(term, null, 'ONLINE_FORBIDDEN', false, timestamp, sourceName, term));
+            Object.entries(g.terms || {}).forEach(([k, v]) => processSinglePartTerm(k, v, 'ONLINE_TERM', false, timestamp, sourceName, `${k}:${v}`));
+            Object.entries(g.generalTerms || {}).forEach(([k, v]) => processSinglePartTerm(k, v, 'ONLINE_GENERAL_TERM', false, timestamp, sourceName, `${k}:${v}`));
+            Object.entries(g.multiPartTerms || {}).forEach(([k, v]) => processMultiPartTerm(k, v, 'ONLINE_TERM', false, timestamp, sourceName, `${k}=${v}`));
+            Object.entries(g.multiPartGeneralTerms || {}).forEach(([k, v]) => processMultiPartTerm(k, v, 'ONLINE_GENERAL_TERM', false, timestamp, sourceName, `${k}=${v}`));
             (g.regexTerms || []).forEach(({ pattern, replacement }) => {
                 if (!processedLocalKeys.has(pattern.toLowerCase())) {
-                    addRule({ term: pattern, translation: replacement, type: 'ONLINE_REGEX', isLocal: false, timestamp });
+                    addRule({ termForms: pattern, translation: replacement, type: 'ONLINE_REGEX', isLocal: false, timestamp, source: sourceName, originalTerm: `${pattern}:${replacement}` });
                 }
             });
         });
 
         rules.sort((a, b) => b.priority - a.priority);
 
+        const currentStateHash = generateGlossaryStateHash();
+        const serializedRules = rules.map(rule => {
+            if (rule.regex instanceof RegExp) {
+                return { ...rule, regex: { source: rule.regex.source, flags: rule.regex.flags } };
+            }
+            return rule;
+        });
+
+        GM_setValue(GLOSSARY_RULES_CACHE_KEY, {
+            hash: currentStateHash,
+            rules: serializedRules
+        });
+
+        if (DEBUG_MODE) {
+            console.log('[缓存管理] 术语表规则已重建并存入缓存。');
+        }
+
         return rules;
     }
+
 
     /**
      * 为单个英文单词生成其常见词形变体
@@ -9295,15 +10964,15 @@
 
         let pluralForm;
         if (preserveCase) {
-            if (baseTerm === lowerBase) { // 全小写
+            if (baseTerm === lowerBase) {
                 pluralForm = baseWithoutEnding + pluralEnding;
-            } else if (baseTerm === baseTerm.toUpperCase()) { // 全大写
+            } else if (baseTerm === baseTerm.toUpperCase()) {
                 pluralForm = (baseWithoutEnding + pluralEnding).toUpperCase();
-            } else if (baseTerm[0] === baseTerm[0].toUpperCase() && baseTerm.slice(1) === baseTerm.slice(1).toLowerCase()) { // 标题格式
+            } else if (baseTerm.length > 0 && baseTerm[0] === baseTerm[0].toUpperCase() && baseTerm.slice(1) === baseTerm.slice(1).toLowerCase()) {
                 const pluralBase = baseWithoutEnding + pluralEnding;
                 pluralForm = pluralBase.charAt(0).toUpperCase() + pluralBase.slice(1).toLowerCase();
-            } else { // 混合大小写
-                pluralForm = baseWithoutEnding + pluralEnding;
+            } else {
+                pluralForm = baseWithoutEnding + pluralEnding.toLowerCase();
             }
         } else {
             pluralForm = baseWithoutEnding + pluralEnding;
@@ -9314,23 +10983,60 @@
     }
 
     /**
-     * 计算一个数组的所有元素全排列
+     * 解析并保存“译文后处理替换”规则
      */
-    function permutations(arr) {
-        if (arr.length <= 1) {
-            return [arr];
+    function processAndSavePostReplaceRules(rawInput) {
+        const rules = {
+            singleRules: {},
+            multiPartRules: []
+        };
+
+        if (typeof rawInput !== 'string' || !rawInput.trim()) {
+            GM_setValue(POST_REPLACE_MAP_KEY, rules);
+            return;
         }
-        const first = arr[0];
-        const rest = arr.slice(1);
-        const permsWithoutFirst = permutations(rest);
-        const allPermutations = [];
-        permsWithoutFirst.forEach(perm => {
-            for (let i = 0; i <= perm.length; i++) {
-                const permWithFirst = [...perm.slice(0, i), first, ...perm.slice(i)];
-                allPermutations.push(permWithFirst);
+
+        const internalSeparatorRegex = /[\s-－﹣—–]+/;
+        const internalSeparatorGlobalRegex = /[\s-－﹣—–]+/g;
+
+        rawInput.split(/[，,]/).forEach(entry => {
+            const trimmedEntry = entry.trim();
+            if (!trimmedEntry) return;
+
+            const multiPartMatch = trimmedEntry.match(/^(.*?)\s*[=＝]\s*(.*?)$/);
+            if (multiPartMatch) {
+                const source = multiPartMatch[1].trim();
+                const target = multiPartMatch[2].trim();
+
+                if (source && target) {
+                    const sourceParts = source.split(internalSeparatorRegex);
+                    const targetParts = target.split(internalSeparatorRegex);
+                    const multiPartRule = {
+                        source: source.replace(internalSeparatorGlobalRegex, ' '),
+                        target: target.replace(internalSeparatorGlobalRegex, ' '),
+                        subRules: {}
+                    };
+
+                    if (sourceParts.length === targetParts.length && sourceParts.length > 1) {
+                        for (let i = 0; i < sourceParts.length; i++) {
+                            multiPartRule.subRules[sourceParts[i]] = targetParts[i];
+                        }
+                    }
+                    rules.multiPartRules.push(multiPartRule);
+                }
+            } else {
+                const singlePartMatch = trimmedEntry.match(/^(.*?)\s*[:：]\s*(.+?)\s*$/);
+                if (singlePartMatch) {
+                    const key = singlePartMatch[1].trim();
+                    const value = singlePartMatch[2].trim();
+                    if (key) {
+                        rules.singleRules[key] = value;
+                    }
+                }
             }
         });
-        return allPermutations;
+
+        GM_setValue(POST_REPLACE_MAP_KEY, rules);
     }
 
     /**
@@ -9372,21 +11078,11 @@
      * 显示通知时打印到控制台
      */
     function notifyAndLog(message, title = 'AO3 汉化插件', logType = 'info') {
-        const logMessage = `[${title}] ${message.replace(/\n/g, ' ')}`;
-
-        switch (logType) {
-            case 'warn':
-                console.warn(logMessage);
-                break;
-            case 'error':
-                console.error(logMessage);
-                break;
-            default:
-                console.info(logMessage);
-                break;
-        }
-
         GM_notification(message, title);
+        if (DEBUG_MODE) {
+            const logFunction = console[logType] || console.log;
+            logFunction(`[${title}] ${message}`);
+        }
     }
 
     /**
@@ -9394,6 +11090,70 @@
      */
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * 获取当前时间的上海时区格式化字符串
+     */
+    function getShanghaiTimeString() {
+        const now = new Date();
+        const year = now.toLocaleString('en-US', { year: 'numeric', timeZone: 'Asia/Shanghai' });
+        const month = now.toLocaleString('en-US', { month: '2-digit', timeZone: 'Asia/Shanghai' });
+        const day = now.toLocaleString('en-US', { day: '2-digit', timeZone: 'Asia/Shanghai' });
+        const time = now.toLocaleString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+            timeZone: 'Asia/Shanghai'
+        });
+        return `${year}-${month}-${day} ${time}`;
+    }
+
+    /**
+     * 为字符串生成一个哈希值
+     */
+    function simpleStringHash(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = (hash << 5) - hash + char;
+            hash |= 0;
+        }
+        return hash;
+    }
+
+    /**
+     * 根据术语表内容生成一个状态哈希
+     */
+    function generateGlossaryStateHash() {
+        const localGlossary = GM_getValue(LOCAL_GLOSSARY_STRING_KEY, '');
+        const localForbidden = GM_getValue(LOCAL_FORBIDDEN_STRING_KEY, '');
+
+        const metadata = GM_getValue(GLOSSARY_METADATA_KEY, {});
+        const enabledOnlineGlossaries = Object.keys(metadata)
+            .filter(url => metadata[url] && metadata[url].enabled !== false)
+            .sort()
+            .map(url => `${url}@${metadata[url].version}`)
+            .join(';');
+
+        const combinedStateString = [
+            localGlossary,
+            localForbidden,
+            enabledOnlineGlossaries
+        ].join('|||');
+
+        return simpleStringHash(combinedStateString);
+    }
+
+    /**
+     * 使术语表规则缓存失效
+     */
+    function invalidateGlossaryCache() {
+        GM_deleteValue(GLOSSARY_RULES_CACHE_KEY);
+        if (DEBUG_MODE) {
+            console.log('[缓存管理] 术语表规则缓存已失效。');
+        }
     }
 
     /**
@@ -9418,22 +11178,21 @@
     /**
      * 辅助函数：获取当前选择的 AI 服务的具体模型ID
      */
-    function getCurrentModelId() {
-        const engine = getValidEngineName();
-        switch (engine) {
-            case 'deepseek_ai':
-                return GM_getValue('deepseek_model', 'deepseek-chat');
-            case 'google_ai':
-                return GM_getValue('google_ai_model', 'gemini-2.5-pro');
-            case 'groq_ai':
-                return GM_getValue('groq_model', 'meta-llama/llama-4-maverick-17b-128e-instruct');
-            case 'together_ai':
-                return GM_getValue('together_model', 'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8');
-            case 'cerebras_ai':
-                return GM_getValue('cerebras_model', 'llama-4-maverick-17b-128e-instruct');
-            default:
-                return '';
+    function getCurrentModelId(engineName) {
+        if (engineName.startsWith('custom_')) {
+            const services = GM_getValue(CUSTOM_SERVICES_LIST_KEY, []);
+            const service = services.find(s => s.id === engineName);
+            if (!service) return 'default-model';
+            return GM_getValue(`${ACTIVE_MODEL_PREFIX_KEY}${engineName}`, (service.models || [])[0] || 'default-model');
         }
+
+        const config = engineMenuConfig[engineName];
+        if (config && config.modelGmKey) {
+            const defaultModel = config.modelMapping ? Object.keys(config.modelMapping)[0] : 'default-model';
+            return GM_getValue(config.modelGmKey, defaultModel);
+        }
+
+        return 'glm-4-flash-250414';
     }
 
 	/**
@@ -9442,12 +11201,12 @@
 	const AdvancedTranslationCleaner = new (class {
 		constructor() {
 			this.metaKeywords = [
-				'原文', '输出', '说明', '遵守', '润色', '语境', '保留', '符合', '指令',
+				'原文', '输出', '说明', '润色', '语境', '遵守', '指令',
 				'Original text', 'Output', 'Note', 'Stage', 'Strategy', 'Polish', 'Retain', 'Glossary', 'Adherence'
 			];
 			this.junkLineRegex = new RegExp(`^\\s*(\\d+\\.\\s*)?(${this.metaKeywords.join('|')})[:：\\s]`, 'i');
 			this.lineNumbersRegex = /^\d+\.\s*/;
-			this.aiGenericExplanationRegex = /\s*\uff08[\u4e00-\u9fa5]{1,10}\uff1a[^\uff08\uff09]*?\uff09\s*/g;
+			this.aiGenericExplanationRegex = /\s*\uff08(?:原文|译文|说明|保留|注释)[:：\s][^\uff08\uff09]*?\uff09\s*/g;
             this.fillerWordsRegex = /(?<![a-zA-Z])(emm|hmm|ah|uh|er|um|uhm)(?![a-zA-Z])/gi;
             this.possessiveRegex = /([a-zA-Z\u4e00-\u9fa5]+(?:s|es|ies)?)\s*['’‘](s\b)?/g;
             this.cjkCharsAndPunctuation = '\\u4e00-\\u9fa5\\u3000-\\u303f\\uff00-\\uffef';
@@ -9630,74 +11389,90 @@
     }
 
     /**
+     * 执行一次性数据迁移，将旧版存储格式更新为新版，确保向后兼容性
+     */
+    function runDataMigration() {
+        (function() {
+            const postReplaceData = GM_getValue(POST_REPLACE_MAP_KEY, null);
+            if (postReplaceData && typeof postReplaceData === 'object' && !postReplaceData.hasOwnProperty('singleRules')) {
+                const newRules = {
+                    singleRules: postReplaceData,
+                    multiPartRules: []
+                };
+                GM_setValue(POST_REPLACE_MAP_KEY, newRules);
+            }
+        })();
+
+        (function() {
+            const oldGlossaryObject = GM_getValue(LOCAL_GLOSSARY_KEY, null);
+            const veryOldGlossaryObject = GM_getValue('ao3_translation_glossary', null);
+            const targetStringKeyExists = GM_getValue(LOCAL_GLOSSARY_STRING_KEY, null) !== null;
+
+            if (targetStringKeyExists) return;
+
+            let glossaryToMigrate = null;
+            if (oldGlossaryObject && typeof oldGlossaryObject === 'object') {
+                glossaryToMigrate = oldGlossaryObject;
+                GM_deleteValue(LOCAL_GLOSSARY_KEY);
+            } else if (veryOldGlossaryObject && typeof veryOldGlossaryObject === 'object') {
+                glossaryToMigrate = veryOldGlossaryObject;
+                GM_deleteValue('ao3_translation_glossary');
+            }
+
+            if (glossaryToMigrate) {
+                const newGlossaryString = Object.entries(glossaryToMigrate).map(([k, v]) => `${k}:${v}`).join(', ');
+                GM_setValue(LOCAL_GLOSSARY_STRING_KEY, newGlossaryString);
+            }
+        })();
+
+        (function() {
+            const servicesToMigrate = ['zhipu_ai', 'deepseek_ai', 'groq_ai', 'together_ai', 'cerebras_ai', 'modelscope_ai'];
+            servicesToMigrate.forEach(serviceName => {
+                const oldKey = `${serviceName.split('_')[0]}_api_key`;
+                const newStringKey = `${serviceName}_keys_string`;
+                const newArrayKey = `${serviceName}_keys_array`;
+                const oldKeyValue = GM_getValue(oldKey, null);
+
+                if (oldKeyValue && GM_getValue(newStringKey, null) === null) {
+                    GM_setValue(newStringKey, oldKeyValue);
+                    const keysArray = oldKeyValue.replace(/[，]/g, ',').split(',').map(k => k.trim()).filter(Boolean);
+                    GM_setValue(newArrayKey, keysArray);
+                    GM_deleteValue(oldKey);
+                }
+            });
+
+            const oldChatglmKey = GM_getValue('chatglm_api_key', null);
+            if (oldChatglmKey && GM_getValue('zhipu_ai_keys_string', null) === null) {
+                GM_setValue('zhipu_ai_keys_string', oldChatglmKey);
+                GM_setValue('zhipu_ai_keys_array', [oldChatglmKey]);
+                GM_deleteValue('chatglm_api_key');
+            }
+        })();
+
+        (function() {
+            const oldDataArray = GM_getValue(LOCAL_FORBIDDEN_TERMS_KEY, null);
+            const newDataExists = GM_getValue(LOCAL_FORBIDDEN_STRING_KEY, null) !== null;
+            if (oldDataArray && Array.isArray(oldDataArray) && !newDataExists) {
+                const newStringData = oldDataArray.join(', ');
+                GM_setValue(LOCAL_FORBIDDEN_STRING_KEY, newStringData);
+            }
+        })();
+
+        (function() {
+            const oldKeysArray = GM_getValue('google_ai_keys_array', null);
+            const newKeysStringExists = GM_getValue('google_ai_keys_string', null) !== null;
+            if (oldKeysArray && Array.isArray(oldKeysArray) && !newKeysStringExists) {
+                const newKeysString = oldKeysArray.join(', ');
+                GM_setValue('google_ai_keys_string', newKeysString);
+            }
+        })();
+    }
+
+    /**
      * 脚本主入口，初始化所有功能
      */
     function main() {
-		(function() {
-			const postReplaceData = GM_getValue(POST_REPLACE_MAP_KEY, null);
-			if (postReplaceData && typeof postReplaceData === 'object' && !postReplaceData.hasOwnProperty('singleRules')) {
-				console.log('AO3 汉化插件：检测到译文后处理替换规则数据，正在迁移至新版本...');
-				const newRules = {
-					singleRules: postReplaceData,
-					multiPartRules: []
-				};
-				GM_setValue(POST_REPLACE_MAP_KEY, newRules);
-				console.log('AO3 汉化插件：译文后处理替换规则迁移成功！');
-			}
-		})();
-		(function() {
-			const veryOldGlossaryKey = 'ao3_translation_glossary';
-			const oldGlossaryObject = GM_getValue(LOCAL_GLOSSARY_KEY, null);
-			const veryOldGlossaryObject = GM_getValue(veryOldGlossaryKey, null);
-
-			if (oldGlossaryObject && typeof oldGlossaryObject === 'object') {
-				console.log('AO3 汉化插件：检测到本地术语表数据，正在迁移至新版本...');
-				const newGlossaryString = Object.entries(oldGlossaryObject).map(([k, v]) => `${k}:${v}`).join(', ');
-				GM_setValue(LOCAL_GLOSSARY_STRING_KEY, newGlossaryString);
-				GM_deleteValue(LOCAL_GLOSSARY_KEY);
-				console.log('AO3 汉化插件：本地术语表迁移成功！');
-			} else if (veryOldGlossaryObject && typeof veryOldGlossaryObject === 'object') {
-				console.log('AO3 汉化插件：检测到本地术语表数据，正在迁移至新版本...');
-				const newGlossaryString = Object.entries(veryOldGlossaryObject).map(([k, v]) => `${k}:${v}`).join(', ');
-				GM_setValue(LOCAL_GLOSSARY_STRING_KEY, newGlossaryString);
-				GM_deleteValue(veryOldGlossaryKey);
-				console.log('AO3 汉化插件：本地术语表迁移成功！');
-			}
-		})();
-		(function() {
-			const oldChatglmKey = GM_getValue('chatglm_api_key', null);
-			if (oldChatglmKey) {
-				console.log('AO3 汉化插件：检测到 ChatGLM API Key 数据，正在迁移至新版本...');
-				GM_setValue('zhipu_api_key', oldChatglmKey);
-				GM_deleteValue('chatglm_api_key');
-				console.log('AO3 汉化插件：API Key 迁移成功！');
-				GM_notification('您的 ChatGLM API Key 已成功迁移为 Zhipu AI API Key！', 'AO3 汉化插件');
-			}
-			else {
-				const oldZhipuAiKey = GM_getValue('zhipu_ai_api_key', null);
-				if (oldZhipuAiKey) {
-					console.log('AO3 汉化插件：检测到 Zhipu AI API Key 数据，正在迁移至新版本...');
-					GM_setValue('zhipu_api_key', oldZhipuAiKey);
-					GM_deleteValue('zhipu_ai_api_key');
-					console.log('AO3 汉化插件：API Key 迁移成功！');
-					GM_notification('您的 Zhipu AI API Key 已成功更新至最新标准！', 'AO3 汉化插件');
-				}
-			}
-		})();
-        (function() {
-            const oldForbiddenTermsKey = 'ao3_local_forbidden_terms';
-            const newForbiddenStringKey = 'ao3_local_forbidden_string';
-
-            const oldDataArray = GM_getValue(oldForbiddenTermsKey, null);
-            const newDataExists = GM_getValue(newForbiddenStringKey, null) !== null;
-
-            if (oldDataArray && Array.isArray(oldDataArray) && !newDataExists) {
-                console.log('AO3 汉化插件：检测到禁翻术语表数据，正在迁移至新版本...');
-                const newStringData = oldDataArray.join(', ');
-                GM_setValue(newForbiddenStringKey, newStringData);
-                console.log('AO3 汉化插件：禁翻术语表迁移成功！');
-            }
-        })();
+        runDataMigration();
 		checkForGlossaryUpdates();
 
 		const fabElements = createFabUI();
@@ -9987,21 +11762,26 @@
      * 构建页面设置 pageConfig 对象
      */
     function buildPageConfig(pageType = pageConfig.currentPageType) {
+        const inheritanceMap = {
+            'admin_posts_index': 'admin_posts_show'
+        };
+        const effectivePageType = inheritanceMap[pageType] || pageType;
+
         const baseStatic = I18N[CONFIG.LANG]?.public?.static || {};
         const baseRegexp = I18N[CONFIG.LANG]?.public?.regexp || [];
         const baseSelector = I18N[CONFIG.LANG]?.public?.selector || [];
         const baseInnerHTMLRegexp = I18N[CONFIG.LANG]?.public?.innerHTML_regexp || [];
-        const globalFlexible = (pageType === 'admin_posts_show') ? {} : (I18N[CONFIG.LANG]?.flexible || {});
+        const globalFlexible = (effectivePageType === 'admin_posts_show') ? {} : (I18N[CONFIG.LANG]?.flexible || {});
 
         const usersCommonStatic = (pageType.startsWith('users_') || pageType === 'profile' || pageType === 'dashboard')
             ? I18N[CONFIG.LANG]?.users_common?.static || {}
             : {};
 
-        const pageStatic = I18N[CONFIG.LANG]?.[pageType]?.static || {};
-        const pageRegexp = I18N[CONFIG.LANG]?.[pageType]?.regexp || [];
-        const pageSelector = I18N[CONFIG.LANG]?.[pageType]?.selector || [];
-        const pageInnerHTMLRegexp = I18N[CONFIG.LANG]?.[pageType]?.innerHTML_regexp || [];
-        let pageFlexible = (pageType === 'admin_posts_show') ? {} : (I18N[CONFIG.LANG]?.[pageType]?.flexible || {});
+        const pageStatic = I18N[CONFIG.LANG]?.[effectivePageType]?.static || {};
+        const pageRegexp = I18N[CONFIG.LANG]?.[effectivePageType]?.regexp || [];
+        const pageSelector = I18N[CONFIG.LANG]?.[effectivePageType]?.selector || [];
+        const pageInnerHTMLRegexp = I18N[CONFIG.LANG]?.[effectivePageType]?.innerHTML_regexp || [];
+        let pageFlexible = (effectivePageType === 'admin_posts_show') ? {} : (I18N[CONFIG.LANG]?.[effectivePageType]?.flexible || {});
 
         const parentPageMap = {
             'works_edit': 'works_new',
@@ -10054,7 +11834,6 @@
 
     /**
      * detectPageType 函数：检测当前页面类型，基于URL。
-     * @returns {string|boolean} 页面的类型
      */
     function detectPageType() {
 
@@ -10067,7 +11846,7 @@
 
         if (document.querySelector('ul.media.fandom.index.group')) return 'media_index';
         if (document.querySelector('div#main.owned_tag_sets-show')) return 'owned_tag_sets_show';
-        const { pathname, search } = window.location;
+        const { pathname } = window.location;
         if (pathname.startsWith('/first_login_help')) {
             return false;
         }
@@ -10089,7 +11868,6 @@
         if (pathname === '/help/tagset-about.html') return 'help_tagset_about';
         if (pathname === '/tag_sets') return 'tag_sets_index';
         if (pathname === '/external_works/new') return 'external_works_new';
-        if (pathname === '/works') return 'works_new';
 
         if (pathname === '/invite_requests' || pathname === '/invite_requests/status') return 'invite_requests_index';
 
@@ -10122,10 +11900,10 @@
             const p5 = pathSegments[4];
             switch (p1) {
                 case 'admin_posts':
-                    if (!p2 || (p2 && /^\d+$/.test(p2))) {
+                    if (p2 && /^\d+$/.test(p2)) {
                         return 'admin_posts_show';
                     }
-                    return 'common';
+                    return 'admin_posts_index';
 
                 case 'comments':
                     if (document.querySelector('a[href="/admin_posts"]')) {
@@ -10169,30 +11947,15 @@
                     if (p2 && !p3) return 'profile';
                     break;
                 case 'works':
-                    if (pathname === '/works/search') return 'works_search';
-                    if (p2 === 'new' && search.includes('import=true')) return 'works_import';
-                    if (p2 && /^\d+$/.test(p2)) {
-                        if (p3 === 'chapters' && p4 === 'new') {
-                            return 'chapters_new';
-                        }
-                        if (p3 === 'chapters' && p4 && /^\d+$/.test(p4) && p5 === 'edit') {
-                            return 'chapters_edit';
-                        }
-                        if (p3 === 'edit_tags') {
-                        return 'works_edit_tags';
-                        }
-                        const heading = document.querySelector('h2.heading');
-                            if (heading && heading.textContent.trim() === 'Edit Work') {
-                                return 'works_edit';
-                            }
-                    if ((p3 === 'chapters' && p4) || (!p3 || p3 === 'navigate')) {
-                        return 'works_chapters_show';
-                    }
-                        if (p3 === 'edit') return 'works_edit';
-                        if (!p3 || p3 === 'navigate') return 'works_chapters_show';
-                        if (p2 === 'new') return 'works_new';
-                    }
                     if (p2 === 'new') return 'works_new';
+                    if (p2 === 'search') return isSearchResultsPage ? 'works_search_results' : 'works_search';
+                    if (p2 && /^\d+$/.test(p2)) {
+                        if (p3 === 'chapters' && p4 === 'new') return 'chapters_new';
+                        if (p3 === 'chapters' && p4 && /^\d+$/.test(p4) && p5 === 'edit') return 'chapters_edit';
+                        if (p3 === 'edit_tags') return 'works_edit_tags';
+                        if (p3 === 'edit') return 'works_edit';
+                        if (!p3 || p3 === 'navigate' || (p3 === 'chapters' && p4)) return 'works_chapters_show';
+                    }
                     if (!p2) return 'works_index';
                     break;
                 case 'chapters':
@@ -10478,22 +12241,52 @@
 			return;
 		}
 
+        const blurbSummaryConfig = {
+            containerSelector: 'li.blurb.group',
+            contentSelector: 'blockquote.userstuff.summary',
+            text: '翻译简介',
+            above: false,
+            isLazyLoad: false
+        };
+
+        const blurbNotesConfig = {
+            containerSelector: 'li.bookmark.blurb.group',
+            contentSelector: 'blockquote.userstuff.notes',
+            text: '翻译注释',
+            above: false,
+            isLazyLoad: false
+        };
+
 		const pageTranslationConfig = {
 			'works_show': [
-				{ selector: 'div.summary blockquote.userstuff', text: '翻译简介', above: false, clearable: true },
-				{ selector: 'div.notes blockquote.userstuff', text: '翻译注释', above: false, clearable: true },
-				{ selector: '#chapters .userstuff', text: '翻译正文', above: true, clearable: false },
-				{ selector: 'li.comment blockquote.userstuff', text: '翻译评论', above: false, clearable: true }
+				{ selector: 'div.summary blockquote.userstuff', text: '翻译简介', above: false, isLazyLoad: false },
+				{ selector: 'div.notes blockquote.userstuff', text: '翻译注释', above: false, isLazyLoad: false },
+				{ selector: '#chapters .userstuff', text: '翻译正文', above: true, isLazyLoad: true },
+				{ selector: 'li.comment blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
 			],
 			'works_chapters_show': [
-				{ selector: 'div.summary blockquote.userstuff', text: '翻译简介', above: false, clearable: true },
-				{ selector: 'div.notes blockquote.userstuff', text: '翻译注释', above: false, clearable: true },
-				{ selector: '#chapters .userstuff', text: '翻译正文', above: true, clearable: false },
-				{ selector: 'li.comment blockquote.userstuff', text: '翻译评论', above: false, clearable: true }
+				{ selector: 'div.summary blockquote.userstuff', text: '翻译简介', above: false, isLazyLoad: false },
+				{ selector: 'div.notes blockquote.userstuff', text: '翻译注释', above: false, isLazyLoad: false },
+				{ selector: '#chapters .userstuff', text: '翻译正文', above: true, isLazyLoad: true },
+				{ selector: 'li.comment blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
 			],
 			'admin_posts_show': [
-				{ selector: '.comment blockquote.userstuff', text: '翻译评论', above: false, clearable: true }
-			]
+                { selector: '.admin_posts-show div[role="article"] .userstuff', text: '翻译动态', above: true, isLazyLoad: false },
+				{ selector: '.comment blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
+			],
+            'admin_posts_index': [
+                { selector: '.admin_posts-index div[role="article"] .userstuff', text: '翻译动态', above: true, isLazyLoad: false }
+            ],
+            'works_index': [blurbSummaryConfig],
+            'users_works_index': [blurbSummaryConfig],
+            'tags_show': [blurbSummaryConfig],
+            'tags_works_index': [blurbSummaryConfig],
+            'works_search_results': [blurbSummaryConfig],
+            'bookmarks_index': [blurbSummaryConfig, blurbNotesConfig],
+            'users_bookmarks_index': [blurbSummaryConfig, blurbNotesConfig],
+            'bookmarks_search_results': [blurbSummaryConfig, blurbNotesConfig],
+            'series_show': [blurbSummaryConfig],
+            'collections_dashboard_common': [blurbSummaryConfig]
 		};
 
 		const targetsForCurrentPage = pageTranslationConfig[pageConfig.currentPageType];
@@ -10503,34 +12296,38 @@
 		}
 
 		targetsForCurrentPage.forEach(target => {
-			document.querySelectorAll(target.selector).forEach(element => {
-				if (element.dataset.translationHandled) {
-					return;
-				}
-				if (pageConfig.currentPageType === 'works_show' && target.selector === '#chapters .userstuff' && element.closest('.notes, .end.notes, .bookmark, .summary')) {
-					return;
-				}
-				if (pageConfig.currentPageType === 'works_chapters_show' && target.selector === '#chapters .userstuff' && element.closest('.notes, .end.notes, .bookmark, .summary')) {
-					return;
-				}
-
-				addTranslationButton(element, target.text, target.above, target.clearable);
-			});
+            if (target.containerSelector) {
+                document.querySelectorAll(target.containerSelector).forEach(container => {
+                    const element = container.querySelector(target.contentSelector);
+                    if (element && !element.dataset.translationHandled) {
+                        if (element.textContent.trim() !== '') {
+                            addTranslationButton(element, target.text, target.above, target.isLazyLoad);
+                        }
+                        element.dataset.translationHandled = 'true';
+                    }
+                });
+            } else {
+                document.querySelectorAll(target.selector).forEach(element => {
+                    if (element.dataset.translationHandled) return;
+                    if (pageConfig.currentPageType === 'works_show' && target.selector === '#chapters .userstuff' && element.closest('.notes, .end.notes, .bookmark, .summary')) return;
+                    if (pageConfig.currentPageType === 'works_chapters_show' && target.selector === '#chapters .userstuff' && element.closest('.notes, .end.notes, .bookmark, .summary')) return;
+                    if (element.textContent.trim() !== '') {
+                        addTranslationButton(element, target.text, target.above, target.isLazyLoad);
+                    }
+                    element.dataset.translationHandled = 'true';
+                });
+            }
 		});
 	}
 
     /**
-     * 翻译按钮添加函数
-     * @param {HTMLElement} element - 目标元素
-     * @param {string} originalButtonText - 按钮初始文本
-     * @param {boolean} isAbove - 按钮是否在元素上方
-     * @param {boolean} canClear - 是否支持“清除”功能
+     * 为指定元素添加翻译按钮
      */
-    function addTranslationButton(element, originalButtonText, isAbove, canClear) {
+    function addTranslationButton(element, originalButtonText, isAbove, isLazyLoad) {
         element.dataset.translationHandled = 'true';
 
         const wrapper = document.createElement('div');
-        wrapper.className = 'translate-me-ao3-wrapper';
+        wrapper.className = 'translate-me-ao3-wrapper state-idle';
 
         const buttonLink = document.createElement('div');
         buttonLink.style.cssText = 'color: #1b95e0; font-size: small; cursor: pointer; display: inline-block; margin-top: 5px; margin-bottom: 5px; margin-left: 10px;';
@@ -10539,62 +12336,14 @@
 
         isAbove ? element.before(wrapper) : element.after(wrapper);
 
-        const mainTextTranslator = !canClear ? createMainTextTranslator() : null;
+        const controller = createTranslationController({
+            containerElement: element,
+            buttonWrapper: wrapper,
+            originalButtonText: originalButtonText,
+            isLazyLoad: isLazyLoad
+        });
 
-        const handleClick = () => {
-            if (!canClear) {
-                switch (mainTextTranslator.state) {
-                    case 'idle':
-                    case 'paused':
-                        buttonLink.textContent = '翻译中…';
-                        mainTextTranslator.start(element, wrapper);
-                        break;
-                    case 'running':
-                        mainTextTranslator.stop();
-                        buttonLink.textContent = originalButtonText;
-                        break;
-                    case 'complete':
-                        mainTextTranslator.clear();
-                        buttonLink.textContent = originalButtonText;
-                        break;
-                }
-                return;
-            }
-
-            if (wrapper.dataset.state === 'translated') {
-                const translationNodes = element.querySelectorAll('.translated-by-ao3-script, .translated-by-ao3-script-error');
-                translationNodes.forEach(node => node.remove());
-                element.querySelectorAll('[data-translation-state="translated"]').forEach(originalUnit => {
-                    delete originalUnit.dataset.translationState;
-                });
-                buttonLink.textContent = originalButtonText;
-                delete wrapper.dataset.state;
-                return;
-            }
-
-            buttonLink.removeEventListener('click', handleClick);
-            buttonLink.textContent = '翻译中…';
-
-            startTranslationEngine(element, () => {
-                buttonLink.textContent = '已翻译';
-                wrapper.dataset.state = 'translated';
-                buttonLink.addEventListener('click', handleClick);
-            });
-        };
-
-        buttonLink.addEventListener('click', handleClick);
-    }
-
-    /**
-     * 主分发函数：根据是否有回调，决定是为“区块”还是为“正文”启动翻译。
-     */
-    function startTranslationEngine(containerElement, onComplete) {
-        if (onComplete) {
-            runTranslationEngineForBlock(containerElement, onComplete);
-        }
-        else {
-            runTranslationEngineWithObserver(containerElement);
-        }
+        buttonLink.addEventListener('click', () => controller.handleClick());
     }
 
     /**
