@@ -1,7 +1,7 @@
 /**
  name         AO3 汉化插件 - 词库
  namespace    https://github.com/V-Lipset/ao3-chinese
- version      1.5.2-2025-09-22
+ version      1.5.3-2025-09-28
  description  AO3 汉化插件的词库文件
  author       V-Lipset
  license      GPL-3.0
@@ -335,6 +335,8 @@ const I18N = {
                 'Sort direction': '排序方向',
                 'Descending': '降序',
                 'Ascending': '升序',
+                    'Filter by title': '按标题筛选',
+                    'Filter by tag': '按标签筛选',
                 'Work Search': '作品搜索',
                 'Any Field': '任意字段',
                 'Date': '日期',
@@ -971,6 +973,11 @@ const I18N = {
                     'p.jump',
                     /^\s*\(See the end of the work for\s*(<a href="#work_endnotes">)notes(<\/a>)\s+and\s+(<a href="#children">)other works inspired by this one(<\/a>)\.\)\s*$/,
                     '（在作品结尾查看$1注释$2和$3相关衍生作品$4。）'
+                ],
+                [
+                    'main',
+                    /^\s*<h2>The archive is down for maintenance\.<\/h2>\s*<p>Check our (<a href="https:\/\/www\.otwstatus\.org">status page<\/a>), (<a href="https:\/\/bsky\.app\/profile\/status\.archiveofourown\.org">@status\.archiveofourown\.org<\/a>) on Bluesky or (<a href="https:\/\/ao3org\.tumblr\.com\/">ao3org<\/a>) on Tumblr for updates\.<\/p>\s*$/s,
+                    '<h2> Archive 正在进行维护。</h2><p>请查看我们的 $1、Bluesky 上的 $2 或 Tumblr 上的 $3，以获取最新动态。</p>'
                 ],
 
                     // 标签说明
@@ -2346,6 +2353,12 @@ const I18N = {
             'selector': [
                 [['input[name="commit"][value="Comment"]', '评论']]
             ]
+        },
+        'admin_posts_index': {
+            'static': {},
+            'innerHTML_regexp': [],
+            'regexp': [],
+            'selector': []
         },
         'works_chapters_show': {
             'static': {
