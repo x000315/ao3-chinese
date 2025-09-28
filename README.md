@@ -28,6 +28,8 @@
 - 术语表相关：
   - [在线术语库](https://github.com/V-Lipset/ao3-chinese/wiki/%E5%9C%A8%E7%BA%BF%E6%9C%AF%E8%AF%AD%E8%A1%A8)
   - [术语表编写指南](https://github.com/V-Lipset/ao3-chinese/wiki#%E6%9C%AF%E8%AF%AD%E8%A1%A8%E7%BC%96%E5%86%99%E6%8C%87%E5%8D%97-v101)
+- 教程相关：
+  - [自定义翻译服务：添加接口地址域名白名单](https://v-lipset.github.io/ao3-chinese/guide/whitelist.html)
 
 ## 🤝 贡献与反馈
 
