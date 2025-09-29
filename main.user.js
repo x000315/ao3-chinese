@@ -2,7 +2,7 @@
 // @name         AO3 汉化插件
 // @namespace    https://github.com/V-Lipset/ao3-chinese
 // @description  中文化 AO3 界面，可调用 AI 实现简介、注释、评论以及全文翻译。
-// @version      1.5.3-2025-09-28
+// @version      1.5.4-2025-09-29
 // @author       V-Lipset
 // @license      GPL-3.0
 // @match        https://archiveofourown.org/*
@@ -87,36 +87,12 @@
     4. 这是第四个句子。
     `;
 
-    // AI 请求数据构建
-    const createRequestData = (model, systemPrompt, paragraphs) => {
-        const numberedText = paragraphs
-            .map((p, i) => `${i + 1}. ${p.innerHTML}`)
-            .join('\n\n');
-        return {
-            model: model,
-            messages: [
-                { "role": "system", "content": systemPrompt },
-                { "role": "user", "content": `Translate the following numbered list to Simplified Chinese（简体中文）:\n\n${numberedText}` }
-            ],
-            stream: false,
-            temperature: 1.0,
-        };
-    };
-
     // 创建一个标准的、兼容OpenAI API的服务配置对象
     const createStandardApiConfig = ({ name, url }) => ({
         name: name,
         url_api: url,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        getRequestData: (paragraphs, engineName) => {
-            const model = getCurrentModelId(engineName);
-            return createRequestData(
-                model,
-                sharedSystemPrompt,
-                paragraphs
-            );
-        },
         responseIdentifier: 'choices[0].message.content',
     });
 
@@ -201,31 +177,23 @@
                     ]);
                 },
             },
-            openai: {
+            openai: createStandardApiConfig({
                 name: 'OpenAI',
-                url_api: 'https://api.openai.com/v1/chat/completions',
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                getRequestData: () => ({}),
-            },
+                url: 'https://api.openai.com/v1/chat/completions',
+            }),
             anthropic: {
                 name: 'Anthropic',
                 url_api: 'https://api.anthropic.com/v1/messages',
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
-                getRequestData: () => ({}),
+                responseIdentifier: 'content[0].text',
             },
             zhipu_ai: createStandardApiConfig({
                 name: 'Zhipu AI',
                 url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-                modelGmKey: null,
-                defaultModel: 'glm-4-flash-250414'
             }),
             deepseek_ai: createStandardApiConfig({
                 name: 'DeepSeek',
                 url: 'https://api.deepseek.com/chat/completions',
-                modelGmKey: 'deepseek_model',
-                defaultModel: 'deepseek-chat'
             }),
             google_ai: {
                 name: 'Google AI',
@@ -249,7 +217,7 @@
                             parts: [{ text: userPrompt }]
                         }],
                         generationConfig: {
-                            temperature: 1.0,
+                            temperature: 0,
                             candidateCount: 1,
                             thinkingConfig: {
                                 thinkingBudget: -1
@@ -262,32 +230,22 @@
             groq_ai: createStandardApiConfig({
                 name: 'Groq AI',
                 url: 'https://api.groq.com/openai/v1/chat/completions',
-                modelGmKey: 'groq_model',
-                defaultModel: 'meta-llama/llama-4-maverick-17b-128e-instruct'
             }),
             together_ai: createStandardApiConfig({
                 name: 'Together AI',
                 url: 'https://api.together.xyz/v1/chat/completions',
-                modelGmKey: 'together_model',
-                defaultModel: 'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8'
             }),
             cerebras_ai: createStandardApiConfig({
                 name: 'Cerebras',
                 url: 'https://api.cerebras.ai/v1/chat/completions',
-                modelGmKey: 'cerebras_model',
-                defaultModel: 'llama-4-scout-17b-16e-instruct'
             }),
             modelscope_ai: createStandardApiConfig({
                 name: 'ModelScope',
                 url: 'https://api-inference.modelscope.cn/v1/chat/completions',
-                modelGmKey: 'modelscope_model',
-                defaultModel: 'LLM-Research/Llama-4-Maverick-17B-128E-Instruct'
             }),
         }
     };
 
-    // 标记是否为首次翻译区块
-    let isFirstTranslationChunk = true;
     // 页面配置缓存
     let pageConfig = {};
 
@@ -637,7 +595,9 @@
             allData.data.staticKeys[key] = GM_getValue(key);
         }
 
-        const builtInServices = Object.keys(engineMenuConfig).filter(id => id !== 'google_translate' && id !== 'add_new_custom');
+        const builtInServices = Object.keys(engineMenuConfig)
+            .filter(id => id !== 'google_translate' && id !== 'add_new_custom')
+            .sort();
         for (const serviceId of builtInServices) {
             allData.data.apiKeys[`${serviceId}_keys_string`] = GM_getValue(`${serviceId}_keys_string`);
             if (engineMenuConfig[serviceId].modelGmKey) {
@@ -646,6 +606,7 @@
         }
 
         const customServicesList = GM_getValue(CUSTOM_SERVICES_LIST_KEY, []);
+        customServicesList.sort((a, b) => a.id.localeCompare(b.id));
         for (const service of customServicesList) {
             allData.data.customServices.push({
                 id: service.id,
@@ -1834,6 +1795,23 @@
             dataSyncActionsContainer, importDataBtn, exportDataBtn
         } = panelElements;
 
+        /**
+         * 根据选择的翻译服务ID更新UI
+         */
+        function updateUiForEngine(engineId) {
+            customServiceContainer.style.display = 'none';
+            modelGroup.style.display = 'none';
+            apiKeyGroup.style.display = 'none';
+
+            if (engineId.startsWith('custom_')) {
+                customServiceManager.enterEditMode(engineId);
+            } else {
+                updateModelSelect(engineId);
+                updateApiKeySection(engineId);
+            }
+            updateAllLabels();
+        }
+
         const PANEL_POSITION_KEY = 'ao3_panel_position';
         const GLOSSARY_ACTION_KEY = 'ao3_glossary_last_action';
         let isDragging = false;
@@ -1879,7 +1857,8 @@
             populateEngineSelect();
             const currentEngine = getValidEngineName();
             engineSelect.value = currentEngine;
-            engineSelect.dispatchEvent(new Event('change'));
+            
+            updateUiForEngine(currentEngine);
 
             displayModeSelect.value = GM_getValue('translation_display_mode', 'bilingual');
 
@@ -2009,14 +1988,36 @@
         const saveApiKey = () => {
             const engineId = engineSelect.value;
             const value = apiKeyInput.value;
+            let serviceIdToUpdate;
 
-            if (engineId.startsWith('custom_') || (engineId === ADD_NEW_CUSTOM_SERVICE_ID && customServiceManager.isPending())) {
-                customServiceManager.saveServiceField('apiKey', value);
+            if (engineId.startsWith('custom_')) {
+                serviceIdToUpdate = engineId;
+            } else if (engineId === ADD_NEW_CUSTOM_SERVICE_ID && customServiceManager.isPending()) {
+                serviceIdToUpdate = customServiceManager.ensureServiceExists();
             } else {
-                const stringKeyName = `${engineId}_keys_string`;
-                GM_setValue(stringKeyName, value);
+                serviceIdToUpdate = engineId;
             }
-            synchronizeAllSettings();
+
+            if (!serviceIdToUpdate) {
+                notifyAndLog('无法保存 API Key，因为没有有效的服务被选中。', '保存错误', 'error');
+                return;
+            }
+
+            const stringKeyName = `${serviceIdToUpdate}_keys_string`;
+            const arrayKeyName = `${serviceIdToUpdate}_keys_array`;
+
+            GM_setValue(stringKeyName, value);
+
+            const keysArray = value.replace(/[，]/g, ',').split(',').map(k => k.trim()).filter(Boolean);
+            GM_setValue(arrayKeyName, keysArray);
+
+            GM_deleteValue(`${serviceIdToUpdate}_key_index`);
+
+            if (DEBUG_MODE) {
+                console.log(`[调试日志] API Key 已为服务 ${serviceIdToUpdate} 保存并同步。`);
+                console.log(`  - String: ${value}`);
+                console.log(`  - Array:`, keysArray);
+            }
         };
 
         const resetDeleteButton = () => {
@@ -2190,21 +2191,12 @@
             }
             const newEngine = engineSelect.value;
 
-            customServiceContainer.style.display = 'none';
-            modelGroup.style.display = 'none';
-            apiKeyGroup.style.display = 'none';
-
             if (newEngine === ADD_NEW_CUSTOM_SERVICE_ID) {
                 customServiceManager.startPendingCreation();
-            } else if (newEngine.startsWith('custom_')) {
-                GM_setValue('transEngine', newEngine);
-                customServiceManager.enterEditMode(newEngine);
             } else {
                 GM_setValue('transEngine', newEngine);
-                updateModelSelect(newEngine);
-                updateApiKeySection(newEngine);
+                updateUiForEngine(newEngine);
             }
-            updateAllLabels();
         });
 
         modelSelect.addEventListener('change', () => {
@@ -2643,15 +2635,19 @@
         },
         'zhipu_ai': {
             displayName: 'Zhipu AI',
-            modelGmKey: null,
+            modelGmKey: 'zhipu_ai_model',
+            modelMapping: {
+                'glm-4.5-flash': 'GLM-4.5-Flash',
+                'glm-4-flash-250414': 'GLM-4-Flash'
+            },
             requiresApiKey: true
         },
         'deepseek_ai': {
             displayName: 'DeepSeek',
             modelGmKey: 'deepseek_model',
             modelMapping: {
-                'deepseek-reasoner': 'DeepSeek V3.1 Think',
-                'deepseek-chat': 'DeepSeek V3.1 Non-Think'
+                'deepseek-reasoner': 'DeepSeek V3.2 Think',
+                'deepseek-chat': 'DeepSeek V3.2 Non-Think'
             },
             requiresApiKey: true
         },
@@ -2701,9 +2697,8 @@
             modelGmKey: 'modelscope_model',
             modelMapping: {
                 'LLM-Research/Llama-4-Maverick-17B-128E-Instruct': 'Llama 4',
-                'deepseek-ai/DeepSeek-V3': 'DeepSeek V3',
+                'deepseek-ai/DeepSeek-V3.1': 'DeepSeek V3.1',
                 'ZhipuAI/GLM-4.5': 'GLM 4.5',
-                'moonshotai/Kimi-K2-Instruct': 'Kimi K2',
                 'Qwen/Qwen3-235B-A22B-Instruct-2507': 'Qwen3 235B'
             },
             requiresApiKey: true
@@ -2726,6 +2721,530 @@
                 unit.style.display = (mode === 'translation_only') ? 'none' : '';
             }
         });
+    }
+
+    /****************** 数据模型层 ******************/
+
+    /**
+     * 根据服务 ID 从存储中读取配置，并组装成一个标准化的 Provider 对象
+     */
+    function getProviderById(serviceId) {
+        if (!serviceId) return null;
+
+        // 处理内置服务
+        if (engineMenuConfig[serviceId] && !serviceId.startsWith('custom_')) {
+            const menuConfig = engineMenuConfig[serviceId];
+            const apiConfig = CONFIG.TRANS_ENGINES[serviceId];
+
+            if (!apiConfig) return null;
+
+            const models = menuConfig.modelMapping ? Object.keys(menuConfig.modelMapping) : [];
+            const selectedModel = menuConfig.modelGmKey ? GM_getValue(menuConfig.modelGmKey, models[0]) : null;
+
+            return {
+                id: serviceId,
+                name: menuConfig.displayName,
+                providerType: serviceId,
+                apiHost: apiConfig.url_api || apiConfig.url,
+                apiKey: GM_getValue(`${serviceId}_keys_string`, ''),
+                models: models,
+                selectedModel: selectedModel,
+                isCustom: false
+            };
+        }
+
+        // 处理自定义服务
+        if (serviceId.startsWith('custom_')) {
+            const customServices = GM_getValue(CUSTOM_SERVICES_LIST_KEY, []);
+            const serviceConfig = customServices.find(s => s.id === serviceId);
+
+            if (!serviceConfig) return null;
+
+            const models = Array.isArray(serviceConfig.models) ? serviceConfig.models : [];
+            const selectedModel = GM_getValue(`${ACTIVE_MODEL_PREFIX_KEY}${serviceId}`, models[0]);
+
+            return {
+                id: serviceId,
+                name: serviceConfig.name,
+                providerType: 'openai-compatible',
+                apiHost: serviceConfig.url,
+                apiKey: GM_getValue(`${serviceId}_keys_string`, ''),
+                models: models,
+                selectedModel: selectedModel,
+                isCustom: true
+            };
+        }
+
+        return null;
+    }
+
+    /****************** API 客户端层 ******************/
+
+    /**
+     * 所有 API 客户端的基类，定义了标准接口和通用翻译流程
+     */
+    class BaseApiClient {
+        /**
+         * @param {object} provider - 包含所有配置的服务提供商对象
+         */
+        constructor(provider) {
+            this.provider = provider;
+        }
+
+        /**
+         * 构建请求所需的 Headers
+         */
+        _buildHeaders() {
+            throw new Error("'_buildHeaders' must be implemented by subclasses.");
+        }
+
+        /**
+         * 构建请求所需的 Body
+         */
+        _buildBody(_paragraphs) {
+            throw new Error("'_buildBody' must be implemented by subclasses.");
+        }
+
+        /**
+         * 解析 API 返回的响应
+         */
+        _parseResponse(_response) {
+            throw new Error("'_parseResponse' must be implemented by subclasses.");
+        }
+
+        /**
+         * 处理特定于该客户端的 API 错误
+         */
+        _handleError(response, responseData) {
+            const apiErrorMessage = getNestedProperty(responseData, 'error.message') || getNestedProperty(responseData, 'message') || response.statusText || '未知错误';
+            const error = new Error();
+            error.noRetry = false;
+
+            if (DEBUG_MODE) {
+                console.group(`[调试日志] BaseApiClient._handleError 捕获错误`);
+                console.log('服务名称:', this.provider.name);
+                console.log('HTTP 状态码:', response.status);
+                console.log('API 原始响应:', responseData);
+                console.groupEnd();
+            }
+
+            switch (response.status) {
+                case 401:
+                    error.message = `API Key 无效或认证失败 (401)：请在设置面板中检查您的 ${this.provider.name} API Key。`;
+                    error.noRetry = true;
+                    break;
+                case 403:
+                    error.message = `权限被拒绝 (403)：您的 API Key 无权访问所请求的资源，或您所在的地区不受支持。`;
+                    error.noRetry = true;
+                    break;
+                case 429:
+                    error.message = `请求频率过高 (429)：已超出 API 的速率限制，脚本将在稍后自动重试。`;
+                    error.type = 'rate_limit';
+                    break;
+                case 500:
+                case 503:
+                    error.message = `服务器错误 (${response.status})：${this.provider.name} 的服务器暂时不可用，脚本将在稍后自动重试。`;
+                    error.type = 'server_overloaded';
+                    break;
+                default:
+                    error.message = `发生未知 API 错误 (代码: ${response.status})。`;
+                    error.noRetry = true;
+                    break;
+            }
+
+            error.message += `\n\n原始错误信息：\n${apiErrorMessage}`;
+            return error;
+        }
+
+        /**
+         * 主翻译方法，执行完整的异步网络请求和响应处理流程
+         */
+        translate(paragraphs) {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const headers = await this._buildHeaders();
+                    const body = this._buildBody(paragraphs);
+                    const url = this.provider.apiHost;
+
+                    if (!url) {
+                        const error = new Error(`服务 "${this.provider.name}" 未配置接口地址 (API Host)。`);
+                        error.noRetry = true;
+                        return reject(error);
+                    }
+
+                    if (DEBUG_MODE) {
+                        console.groupCollapsed(`[调试日志] BaseApiClient.translate 准备发送请求`);
+                        console.log('服务 Provider:', this.provider);
+                        console.log('请求 URL:', url);
+                        console.log('请求 Headers:', headers);
+                        try {
+                            console.log('请求 Body (解析后):', JSON.parse(body));
+                        } catch (e) {
+                            console.log('请求 Body (原始文本):', body);
+                        }
+                        console.groupEnd();
+                    }
+
+                    GM_xmlhttpRequest({
+                        method: 'POST',
+                        url: url,
+                        headers: headers,
+                        data: body,
+                        responseType: 'text',
+                        timeout: 45000,
+                        onload: (res) => {
+                            let responseData;
+                            try {
+                                responseData = JSON.parse(res.responseText);
+                            } catch (e) {
+                                if (DEBUG_MODE) {
+                                    console.error(`[调试日志] JSON 解析失败。服务器返回的原始文本内容如下：`);
+                                    console.log(res.responseText);
+                                }
+                                const error = new Error('API 响应不是有效的 JSON 格式。这可能由网络防火墙(WAF/CDN)拦截导致。');
+                                error.type = 'invalid_json';
+                                return reject(error);
+                            }
+
+                            if (res.status === 200) {
+                                try {
+                                    const translatedText = this._parseResponse(responseData);
+                                    if (typeof translatedText !== 'string' || !translatedText.trim()) {
+                                        return reject(new Error('API 未返回有效文本。'));
+                                    }
+                                    resolve(translatedText);
+                                } catch (e) {
+                                    reject(new Error(`解析响应失败: ${e.message}`));
+                                }
+                            } else {
+                                reject(this._handleError(res, responseData));
+                            }
+                        },
+                        onerror: () => reject({ type: 'network', message: '网络请求错误' }),
+                        ontimeout: () => reject({ type: 'timeout', message: '请求超时' })
+                    });
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+    }
+
+    /**
+     * 用于处理所有 OpenAI 兼容 API 的客户端，包括大部分自定义服务
+     */
+    class OpenAICompatibleClient extends BaseApiClient {
+        /**
+         * @param {object} provider - 包含所有配置的服务提供商对象
+         */
+        constructor(provider) {
+            super(provider);
+        }
+
+        /**
+         * 构建 OpenAI 兼容 API 的请求头
+         */
+        async _buildHeaders() {
+            const { key: apiKey, index: keyIndex } = await _getApiKeyForService(this.provider);
+
+            if (DEBUG_MODE) {
+                const maskedKey = apiKey.length > 8 ? `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}` : apiKey;
+                console.log(`[调试日志] OpenAICompatibleClient._buildHeaders:`);
+                console.log(`  - 服务: ${this.provider.name}`);
+                console.log(`  - 使用 Key #${keyIndex + 1}: ${maskedKey}`);
+            }
+
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            };
+        }
+
+        _buildBody(paragraphs) {
+            const numberedText = paragraphs
+                .map((p, i) => `${i + 1}. ${p.innerHTML}`)
+                .join('\n\n');
+
+            const requestData = {
+                model: this.provider.selectedModel,
+                messages: [
+                    { "role": "system", "content": sharedSystemPrompt },
+                    { "role": "user", "content": `Translate the following numbered list to Simplified Chinese（简体中文）:\n\n${numberedText}` }
+                ],
+                stream: false,
+                temperature: 0,
+            };
+            return JSON.stringify(requestData);
+        }
+
+        _parseResponse(response) {
+            return getNestedProperty(response, 'choices[0].message.content');
+        }
+
+        /**
+         * 处理 OpenAI 兼容 API 的特定错误
+         */
+        _handleError(response, responseData) {
+            const handler = API_ERROR_HANDLERS[this.provider.id] || API_ERROR_HANDLERS['openai'] || super._handleError;
+
+            if (DEBUG_MODE) {
+                console.log(`[调试日志] OpenAICompatibleClient._handleError:`);
+                console.log(`  - 服务: ${this.provider.name} (ID: ${this.provider.id})`);
+                console.log(`  - 选定的错误处理器: ${handler.name || '基类处理器'}`);
+            }
+
+            return handler(response, this.provider.name, responseData);
+        }
+
+        /**
+         * 覆盖基类的 translate 方法以添加详细的调试日志
+         */
+        translate(paragraphs) {
+            if (DEBUG_MODE) {
+                console.group(`[调试日志] OpenAICompatibleClient.translate 发起请求`);
+                console.log('服务 Provider:', this.provider);
+                console.log('请求 URL:', this.provider.apiHost);
+                console.log('请求模型:', this.provider.selectedModel);
+                console.log('请求段落数:', paragraphs.length);
+                console.groupEnd();
+            }
+            return super.translate(paragraphs);
+        }
+    }
+
+    /**
+     * 根据 Provider 类型创建并返回相应的客户端实例
+     */
+    const ApiClientFactory = {
+        /**
+         * @param {object} provider - 包含所有配置的服务提供商对象
+         * @returns {BaseApiClient} - 返回一个具体的 API 客户端实例
+         */
+        create: function(provider) {
+            const clientType = provider.isCustom ? 'openai-compatible' : provider.id;
+
+            switch (clientType) {
+                case 'anthropic':
+                    return new AnthropicClient(provider);
+                case 'google_ai':
+                    return new GoogleAIClient(provider);
+                case 'openai':
+                case 'zhipu_ai':
+                case 'deepseek_ai':
+                case 'groq_ai':
+                case 'together_ai':
+                case 'cerebras_ai':
+                case 'modelscope_ai':
+                case 'openai-compatible':
+                    return new OpenAICompatibleClient(provider);
+                default:
+                    if (DEBUG_MODE) {
+                        console.warn(`[ApiClientFactory] 未找到服务类型 "${clientType}" 的特定客户端，将回退到 OpenAI 兼容客户端。`);
+                    }
+                    return new OpenAICompatibleClient(provider);
+            }
+        }
+    };
+
+    /**
+     * 用于处理 Anthropic API 的专属客户端
+     */
+    class AnthropicClient extends BaseApiClient {
+        /**
+         * @param {object} provider - 包含所有配置的服务提供商对象
+         */
+        constructor(provider) {
+            super(provider);
+        }
+
+        /**
+         * 构建符合 Anthropic API 规范的请求头
+         */
+        async _buildHeaders() {
+            const { key: apiKey, index: keyIndex } = await _getApiKeyForService(this.provider);
+
+            if (DEBUG_MODE) {
+                const maskedKey = apiKey.length > 8 ? `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}` : apiKey;
+                console.log(`[调试日志] AnthropicClient._buildHeaders:`);
+                console.log(`  - 服务: ${this.provider.name}`);
+                console.log(`  - 使用 Key #${keyIndex + 1}: ${maskedKey}`);
+            }
+
+            return {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01'
+            };
+        }
+
+        /**
+         * 构建完全符合 Anthropic API 规范的请求体
+         */
+        _buildBody(paragraphs) {
+            const numberedText = paragraphs
+                .map((p, i) => `${i + 1}. ${p.innerHTML}`)
+                .join('\n\n');
+
+            const requestData = {
+                model: this.provider.selectedModel,
+                system: sharedSystemPrompt,
+                max_tokens: 4096,
+                messages: [
+                    {
+                        "role": "user",
+                        "content": `Translate the following numbered list to Simplified Chinese（简体中文）:\n\n${numberedText}`
+                    }
+                ],
+                temperature: 0,
+            };
+            return JSON.stringify(requestData);
+        }
+
+        /**
+         * 解析 Anthropic API 的响应
+         */
+        _parseResponse(response) {
+            return getNestedProperty(response, 'content[0].text');
+        }
+    }
+
+    /**
+     * 用于处理 Gemini API 的专属客户端
+     */
+    class GoogleAIClient extends BaseApiClient {
+        /**
+         * @param {object} provider - 包含所有配置的服务提供商对象
+         */
+        constructor(provider) {
+            super(provider);
+        }
+
+        /**
+         * 构建符合 Gemini API 规范的请求头
+         */
+        _buildHeaders() {
+            if (DEBUG_MODE) {
+                console.log(`[调试日志] GoogleAIClient._buildHeaders:`);
+                console.log(`  - 服务: ${this.provider.name}`);
+                console.log(`  - Headers: Content-Type only`);
+            }
+            return {
+                'Content-Type': 'application/json'
+            };
+        }
+
+        /**
+         * 构建符合 Gemini API 规范的请求体
+         */
+        _buildBody(paragraphs) {
+            const numberedText = paragraphs
+                .map((p, i) => `${i + 1}. ${p.innerHTML}`)
+                .join('\n\n');
+
+            const userPrompt = `Translate the following numbered list to Simplified Chinese（简体中文）:\n\n${numberedText}`;
+
+            const requestData = {
+                systemInstruction: {
+                    role: "user",
+                    parts: [{ text: sharedSystemPrompt }]
+                },
+                contents: [{
+                    role: "user",
+                    parts: [{ text: userPrompt }]
+                }],
+                generationConfig: {
+                    temperature: 0,
+                    candidateCount: 1,
+                }
+            };
+            return JSON.stringify(requestData);
+        }
+
+        /**
+         * 解析 Gemini API 的响应
+         */
+        _parseResponse(response) {
+            return getNestedProperty(response, 'candidates[0].content.parts[0].text');
+        }
+
+        /**
+         * 主翻译方法，处理 Google AI 特有的 URL 构建和认证逻辑
+         */
+        translate(paragraphs) {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const { key: apiKey, index: keyIndex } = await _getApiKeyForService(this.provider);
+                    const modelId = this.provider.selectedModel;
+
+                    if (!modelId) {
+                        const error = new Error(`服务 "${this.provider.name}" 未选择任何模型。`);
+                        error.noRetry = true;
+                        return reject(error);
+                    }
+
+                    const finalUrl = this.provider.apiHost.replace('{model}', modelId) + `?key=${apiKey}`;
+                    const headers = this._buildHeaders();
+                    const body = this._buildBody(paragraphs);
+
+                    if (DEBUG_MODE) {
+                        const maskedKey = apiKey.length > 8 ? `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}` : apiKey;
+                        console.groupCollapsed(`[调试日志] GoogleAIClient.translate 准备发送请求`);
+                        console.log('服务 Provider:', this.provider);
+                        console.log('请求 URL:', finalUrl);
+                        console.log(`使用 Key #${keyIndex + 1}: ${maskedKey}`);
+                        console.log('请求 Headers:', headers);
+                        try {
+                            console.log('请求 Body (解析后):', JSON.parse(body));
+                        } catch (e) {
+                            console.log('请求 Body (原始文本):', body);
+                        }
+                        console.groupEnd();
+                    }
+
+                    GM_xmlhttpRequest({
+                        method: 'POST',
+                        url: finalUrl,
+                        headers: headers,
+                        data: body,
+                        responseType: 'text',
+                        timeout: 45000,
+                        onload: (res) => {
+                            let responseData;
+                            try {
+                                responseData = JSON.parse(res.responseText);
+                            } catch (e) {
+                                if (DEBUG_MODE) {
+                                    console.error(`[调试日志] JSON 解析失败。服务器返回的原始文本内容如下：`);
+                                    console.log(res.responseText);
+                                }
+                                const error = new Error('API 响应不是有效的 JSON 格式。这可能由网络防火墙(WAF/CDN)拦截导致。');
+                                error.type = 'invalid_json';
+                                return reject(error);
+                            }
+
+                            if (res.status === 200) {
+                                try {
+                                    const translatedText = this._parseResponse(responseData);
+                                    if (typeof translatedText !== 'string' || !translatedText.trim()) {
+                                        return reject(new Error('API 未返回有效文本。'));
+                                    }
+                                    resolve(translatedText);
+                                } catch (e) {
+                                    reject(new Error(`解析响应失败: ${e.message}`));
+                                }
+                            } else {
+                                reject(this._handleError(res, responseData));
+                            }
+                        },
+                        onerror: () => reject({ type: 'network', message: '网络请求错误' }),
+                        ontimeout: () => reject({ type: 'timeout', message: '请求超时' })
+                    });
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
     }
 
     /****************** 谷歌翻译模块 ******************/
@@ -2798,12 +3317,12 @@
         }
     };
 
-	/**
+    /**
      * 获取当前有效翻译引擎的名称
      */
 	function getValidEngineName() {
 		const storedEngine = GM_getValue('transEngine');
-		if (storedEngine && (CONFIG.TRANS_ENGINES[storedEngine] || storedEngine.startsWith('custom_'))) {
+		if (storedEngine && (engineMenuConfig[storedEngine] || storedEngine.startsWith('custom_'))) {
 			return storedEngine;
 		}
 		return CONFIG.transEngine;
@@ -2812,104 +3331,110 @@
     /**
      * 远程翻译请求函数
      */
-	async function requestRemoteTranslation(paragraphs, { retryCount = 0, maxRetries = 5 } = {}) {
-		const engineName = getValidEngineName();
+    async function requestRemoteTranslation(paragraphs, { retryCount = 0, maxRetries = 5, isCancelled = () => false } = {}) {
+        const createCancellationError = () => {
+            const error = new Error('用户已取消翻译。');
+            error.type = 'user_cancelled';
+            error.noRetry = true;
+            return error;
+        };
 
-		let engineConfig = CONFIG.TRANS_ENGINES[engineName];
+        if (isCancelled()) {
+            if (DEBUG_MODE) console.log(`[网络层] requestRemoteTranslation (尝试 #${retryCount + 1}) 入口检测到取消信号，立即中止。`);
+            throw createCancellationError();
+        }
 
-		if (!engineConfig && engineName.startsWith('custom_')) {
-			engineConfig = {
-				name: '自定义服务',
-				method: 'POST',
-				getRequestData: (paragraphs, engineName) => {
-					const model = getCurrentModelId(engineName);
-					return createRequestData(model, sharedSystemPrompt, paragraphs);
-				},
-				responseIdentifier: 'choices[0].message.content',
-			};
-		}
+        if (DEBUG_MODE) console.log(`[网络层] requestRemoteTranslation 开始执行 (尝试 #${retryCount + 1})。isCancelled 初始状态: ${isCancelled()}`);
 
-		if (!engineConfig) {
-			console.error(`%c[翻译流程] 错误: 未找到服务配置。`, `服务 "${engineName}" 未配置。`, paragraphs);
-			throw new Error(`服务 ${engineName} 未配置`);
-		}
+        const engineName = getValidEngineName();
 
-		try {
-			let translatedText;
-
-            switch (engineName) {
-                case 'google_translate':
-                    const translatedHtmlSnippets = await _handleGoogleRequest(engineConfig, paragraphs);
-                    if (!Array.isArray(translatedHtmlSnippets)) {
-                        throw new Error('谷歌翻译接口未返回预期的数组格式');
-                    }
-                    const innerContents = translatedHtmlSnippets.map(html => {
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = html;
-                        return tempDiv.firstElementChild ? tempDiv.firstElementChild.innerHTML : '';
-                    });
-                    translatedText = innerContents.map((content, index) => `${index + 1}. ${content}`).join('\n\n');
-                    break;
-                case 'openai':
-                    translatedText = await _handleOpenaiRequest(engineConfig, paragraphs, engineName);
-                    break;
-                case 'anthropic':
-                    translatedText = await _handleAnthropicRequest(engineConfig, paragraphs, engineName);
-                    break;
-                case 'google_ai':
-                    translatedText = await _handleGoogleAiRequest(engineConfig, paragraphs, engineName);
-                    break;
-                default:
-                    translatedText = await _handleStandardApiRequest(engineConfig, paragraphs, engineName);
-                    break;
+        if (engineName === 'google_translate') {
+            try {
+                const translatedHtmlSnippets = await _handleGoogleRequest(CONFIG.TRANS_ENGINES.google_translate, paragraphs);
+                if (!Array.isArray(translatedHtmlSnippets)) {
+                    throw new Error('谷歌翻译接口未返回预期的数组格式');
+                }
+                const innerContents = translatedHtmlSnippets.map(html => {
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = html;
+                    return tempDiv.firstElementChild ? tempDiv.firstElementChild.innerHTML : '';
+                });
+                return innerContents.map((content, index) => `${index + 1}. ${content}`).join('\n\n');
+            } catch (error) {
+                console.error(`%c[网络层] 谷歌翻译错误:`, 'color: red;', error);
+                throw error;
             }
-			
-			if (typeof translatedText !== 'string' || !translatedText.trim()) {
-				throw new Error('API 未返回有效文本');
-			}
-			
-			return translatedText;
+        }
 
-		} catch (error) {
-            console.error(`%c[翻译流程] 错误: 在第 ${retryCount + 1} 次尝试中捕获到错误。`, 'color: red;', error);
-
-            if (error.noRetry) {
+        try {
+            const provider = getProviderById(engineName);
+            if (!provider) {
+                const error = new Error(`未能找到服务 "${engineName}" 的配置信息。`);
+                error.noRetry = true;
                 throw error;
             }
 
-			const isRetriable =
-                error.type === 'server_overloaded' ||
-                error.type === 'rate_limit' ||
-                error.type === 'network' ||
-                error.type === 'timeout' ||
-                error.message.includes('超时') ||
-                error.message.includes('网络') ||
-                error.message === 'API 未返回有效文本';
+            const client = ApiClientFactory.create(provider);
+            const translatedText = await client.translate(paragraphs);
 
-			if (retryCount < maxRetries && isRetriable) {
-				const delay = Math.pow(2, retryCount) * 1500 + Math.random() * 1000;
-				await sleep(delay);
-				return await requestRemoteTranslation(paragraphs, { retryCount: retryCount + 1, maxRetries });
-			}
-			throw error;
-		}
-	}
+            if (typeof translatedText !== 'string' || !translatedText.trim()) {
+                throw new Error('API 未返回有效文本。');
+            }
+
+            return translatedText;
+
+        } catch (error) {
+            if (isCancelled()) {
+                if (DEBUG_MODE) console.log('[网络层] catch 块检测到取消信号，抛出取消错误。');
+                throw createCancellationError();
+            }
+
+            if (DEBUG_MODE) {
+                console.error(`%c[网络层] 错误: 在第 ${retryCount + 1} 次尝试中捕获到错误。`, 'color: red;', error);
+            }
+
+            const retriableErrorTypes = new Set([
+                'server_overloaded',
+                'rate_limit',
+                'network',
+                'timeout',
+                'invalid_json'
+            ]);
+
+            const isRetriable = !error.noRetry && (retriableErrorTypes.has(error.type) || error.message.includes('API 未返回有效文本'));
+
+            if (retryCount < maxRetries && isRetriable) {
+                const delay = Math.pow(2, retryCount) * 1500 + Math.random() * 1000;
+                if (DEBUG_MODE) {
+                    console.log(`[网络层] 错误可重试 (类型: ${error.type || '未知'})。将在 ${Math.round(delay / 1000)} 秒后进行第 ${retryCount + 2} 次尝试... isCancelled 状态: ${isCancelled()}`);
+                }
+                await sleep(delay);
+
+                if (isCancelled()) {
+                    if (DEBUG_MODE) console.log('[网络层] 等待后检测到取消信号，中止重试。');
+                    throw createCancellationError();
+                }
+                return await requestRemoteTranslation(paragraphs, { retryCount: retryCount + 1, maxRetries, isCancelled });
+            }
+            throw error;
+        }
+    }
 
     /**
-     * 为指定服务获取下一个可用的 API Key，包含轮询和跨标签页锁机制
+     * 为指定服务获取下一个可用的 API Key
      */
-    async function _getApiKeyForService(serviceName) {
-        const arrayKey = `${serviceName}_keys_array`;
+    async function _getApiKeyForService(provider) {
+        const serviceId = provider.id;
+        const arrayKey = `${serviceId}_keys_array`;
         const keys = GM_getValue(arrayKey, []);
 
         if (keys.length === 0) {
-            const serviceDisplayName = engineMenuConfig[serviceName]?.displayName || serviceName;
-            const error = new Error(`请先在设置面板中为“${serviceDisplayName}”服务设置至少一个 API Key`);
+            const error = new Error(`请先在设置面板中为“${provider.name}”服务设置至少一个 API Key`);
             error.noRetry = true;
             throw error;
         }
 
-        const lockKey = `${serviceName}_key_lock`;
+        const lockKey = `${serviceId}_key_lock`;
         const LOCK_TIMEOUT = 5000;
         const myLockId = `lock_${Date.now()}_${Math.random()}`;
 
@@ -2938,11 +3463,11 @@
         }
 
         if (!(await acquireLock())) {
-            throw new Error(`获取 ${serviceName} API Key 的操作锁超时，请稍后重试。`);
+            throw new Error(`获取 ${provider.name} API Key 的操作锁超时，请稍后重试。`);
         }
 
         try {
-            const indexKey = `${serviceName}_key_index`;
+            const indexKey = `${serviceId}_key_index`;
             const startIndex = GM_getValue(indexKey, 0);
             const currentIndex = startIndex % keys.length;
             GM_setValue(indexKey, (startIndex + 1) % keys.length);
@@ -2951,62 +3476,6 @@
             return { key: currentKey, index: currentIndex };
         } finally {
             releaseLock();
-        }
-    }
-
-    /**
-     * 处理 Google AI 的 API 请求，通过调用 Key 获取函数实现轮询
-     */
-    async function _handleGoogleAiRequest(engineConfig, paragraphs, engineName) {
-        const { key: currentKey, index: currentIndex } = await _getApiKeyForService(engineName);
-
-        const modelId = getCurrentModelId(engineName);
-        const final_url = engineConfig.url_api.replace('{model}', modelId) + `?key=${currentKey}`;
-        const requestData = engineConfig.getRequestData(paragraphs, engineName);
-
-        try {
-            const result = await new Promise((resolve, reject) => {
-                GM_xmlhttpRequest({
-                    method: engineConfig.method, url: final_url, headers: engineConfig.headers,
-                    data: JSON.stringify(requestData), responseType: 'json', timeout: 45000,
-                    onload: (res) => {
-                        let responseData = res.response;
-                        if (typeof responseData === 'string') try { responseData = JSON.parse(responseData); } catch(e) {}
-
-                        const candidate = getNestedProperty(responseData, 'candidates[0]');
-                        const translatedText = getNestedProperty(candidate, 'content.parts[0].text');
-                        const finishReason = getNestedProperty(candidate, 'finishReason');
-                        const errorMessage = getNestedProperty(responseData, 'error.message') || res.statusText || '未知错误';
-
-                        if (res.status === 200 && translatedText) {
-                            resolve(responseData);
-                        } else {
-                            let errorType = 'api_error';
-                            let message = `Key #${currentIndex + 1} 遇到错误（代码：${res.status}）：${errorMessage}`;
-
-                            if (res.status === 200) {
-                                if (['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT'].includes(finishReason)) {
-                                    errorType = 'content_error';
-                                    message = `因 ${finishReason} 原因，请求被 Google AI 安全策略阻止`;
-                                } else {
-                                    errorType = 'empty_response';
-                                    message = `Key #${currentIndex + 1} 失败：API 返回了空内容 (FinishReason: ${finishReason})`;
-                                }
-                            } else if (res.status === 400 && errorMessage.toLowerCase().includes('api key not valid')) {
-                                errorType = 'key_invalid';
-                                message = `Key #${currentIndex + 1} 无效`;
-                            }
-
-                            reject({ type: errorType, message: message, res: res });
-                        }
-                    },
-                    onerror: () => reject({ type: 'network', message: `Key #${currentIndex + 1} 网络错误` }),
-                    ontimeout: () => reject({ type: 'network', message: `Key #${currentIndex + 1} 请求超时` })
-                });
-            });
-            return getNestedProperty(result, engineConfig.responseIdentifier);
-        } catch (errorData) {
-            throw _handleGoogleAiError({ ...errorData, name: engineConfig.name });
         }
     }
 
@@ -3052,183 +3521,6 @@
     }
 
     /**
-     * 处理对 OpenAI API 的请求
-     */
-    async function _handleOpenaiRequest(engineConfig, paragraphs, engineName) {
-        const { key: apiKey, index: keyIndex } = await _getApiKeyForService(engineName);
-        const modelId = getCurrentModelId(engineName);
-
-        const requestData = {
-            model: modelId,
-            messages: [
-                { "role": "system", "content": sharedSystemPrompt },
-                { "role": "user", "content": paragraphs.map((p, i) => `${i + 1}. ${p.innerHTML}`).join('\n\n') }
-            ],
-            stream: false,
-            temperature: 1.0,
-        };
-
-        const res = await new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-                method: engineConfig.method,
-                url: engineConfig.url_api,
-                headers: { ...engineConfig.headers, 'Authorization': `Bearer ${apiKey}` },
-                data: JSON.stringify(requestData),
-                responseType: 'json',
-                timeout: 45000,
-                onload: resolve,
-                onerror: () => reject(new Error(`Key #${keyIndex + 1} 网络请求错误`)),
-                ontimeout: () => reject(new Error(`Key #${keyIndex + 1} 请求超时`))
-            });
-        });
-
-        if (res.status !== 200) {
-            let responseData = res.response;
-            if (typeof responseData === 'string') try { responseData = JSON.parse(responseData); } catch (e) {}
-            throw _handleOpenaiError(res, engineConfig.name, responseData);
-        }
-
-        return getNestedProperty(res.response, 'choices[0].message.content');
-    }
-
-    /**
-     * 处理对 Anthropic API 的请求
-     */
-    async function _handleAnthropicRequest(engineConfig, paragraphs, engineName) {
-        const { key: apiKey, index: keyIndex } = await _getApiKeyForService(engineName);
-        const modelId = getCurrentModelId(engineName);
-
-        const requestData = {
-            model: modelId,
-            system: sharedSystemPrompt,
-            messages: [
-                { "role": "user", "content": paragraphs.map((p, i) => `${i + 1}. ${p.innerHTML}`).join('\n\n') }
-            ],
-            stream: false,
-            temperature: 1.0,
-            max_tokens: 4096,
-        };
-
-        const res = await new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-                method: engineConfig.method,
-                url: engineConfig.url_api,
-                headers: { ...engineConfig.headers, 'x-api-key': apiKey },
-                data: JSON.stringify(requestData),
-                responseType: 'json',
-                timeout: 45000,
-                onload: resolve,
-                onerror: () => reject(new Error(`Key #${keyIndex + 1} 网络请求错误`)),
-                ontimeout: () => reject(new Error(`Key #${keyIndex + 1} 请求超时`))
-            });
-        });
-
-        if (res.status !== 200) {
-            let responseData = res.response;
-            if (typeof responseData === 'string') try { responseData = JSON.parse(responseData); } catch (e) {}
-            throw _handleAnthropicError(res, engineConfig.name, responseData);
-        }
-
-        return getNestedProperty(res.response, 'content[0].text');
-    }
-
-    /**
-     * 处理标准 Bearer Token 认证的 API 请求，通过调用通用 Key 获取函数实现轮询
-     */
-	async function _handleStandardApiRequest(engineConfig, paragraphs, engineName) {
-		const { name, method, responseIdentifier, getRequestData } = engineConfig;
-
-		let headers = { ...engineConfig.headers };
-        let finalUrl;
-
-        const { key: apiKey, index: keyIndex } = await _getApiKeyForService(engineName);
-        const serviceDisplayName = (engineMenuConfig[engineName]?.displayName) ||
-                                   (GM_getValue(CUSTOM_SERVICES_LIST_KEY, []).find(s => s.id === engineName)?.name) ||
-                                   engineName;
-
-        if (engineName.startsWith('custom_')) {
-            const services = GM_getValue(CUSTOM_SERVICES_LIST_KEY, []);
-            const service = services.find(s => s.id === engineName);
-            finalUrl = service ? service.url : null;
-        } else {
-            finalUrl = engineConfig.url_api;
-        }
-
-        if (!finalUrl) {
-            const error = new Error(`请先为服务“${serviceDisplayName}”设置接口地址`);
-            error.noRetry = true;
-            throw error;
-        }
-
-        if (apiKey) {
-            headers['Authorization'] = `Bearer ${apiKey}`;
-        }
-
-		const requestData = getRequestData(paragraphs, engineName);
-
-		const res = await new Promise((resolve, reject) => {
-			GM_xmlhttpRequest({
-				method, url: finalUrl, headers, data: JSON.stringify(requestData),
-				responseType: 'json', timeout: 45000,
-				onload: resolve,
-				onerror: () => reject(new Error(`Key #${keyIndex + 1} 网络请求错误`)),
-				ontimeout: () => reject(new Error(`Key #${keyIndex + 1} 请求超时`))
-			});
-		});
-
-		if (res.status !== 200) {
-			let responseData = res.response;
-			if (typeof responseData === 'string') try { responseData = JSON.parse(responseData); } catch (e) {}
-
-            const errorHandler = API_ERROR_HANDLERS[engineName] || _handleDefaultApiError;
-            const error = errorHandler(res, name, responseData);
-
-			throw error;
-		}
-
-		return getNestedProperty(res.response, responseIdentifier);
-	}
-
-    // API 错误处理策略注册表
-    const API_ERROR_HANDLERS = {};
-
-    /**
-     * 默认 API 错误处理策略
-     */
-    function _handleDefaultApiError(res, name, responseData) {
-        const apiErrorMessage = getNestedProperty(responseData, 'error.message') || getNestedProperty(responseData, 'message') || res.statusText;
-        let userFriendlyError;
-        const error = new Error();
-
-        switch (res.status) {
-            case 401:
-                userFriendlyError = `API Key 无效或缺失 (401)：请在设置面板中检查您的 ${name} API Key 是否正确填写。`;
-                error.noRetry = true;
-                break;
-            case 405:
-                userFriendlyError = `方法不允许 (405)：您配置的接口地址不支持 POST 请求。请检查 URL 是否为完整的聊天补全端点（通常以 /chat/completions 结尾）。`;
-                error.noRetry = true;
-                break;
-            case 429:
-                userFriendlyError = `请求频率过高 (429)：已超出 API 的速率限制，脚本将在稍后自动重试。`;
-                error.type = 'rate_limit';
-                break;
-            case 500:
-            case 503:
-                userFriendlyError = `服务器错误 (${res.status})：${name} 的服务器暂时不可用，脚本将在稍后自动重试。`;
-                error.type = 'server_overloaded';
-                break;
-            default:
-                userFriendlyError = `发生未知 API 错误 (代码: ${res.status})。`;
-                error.noRetry = true;
-                break;
-        }
-
-        error.message = userFriendlyError + `\n\n原始错误信息：\n${apiErrorMessage}`;
-        return error;
-    }
-
-    /**
      * OpenAI 的专属错误处理策略
      */
     function _handleOpenaiError(res, name, responseData) {
@@ -3261,8 +3553,9 @@
                 break;
             case 429:
                 if (apiErrorCode === 'insufficient_quota') {
-                    userFriendlyError = `账户余额不足 (429)：您的 ${name} 账户已用尽信用点数或达到支出上限。请前往 OpenAI 官网检查您的账单详情。`;
+                    userFriendlyError = `账户余额不足 (429)：您的 ${name} 账户已用尽信用点数或达到支出上限。请前往服务官网检查您的账单详情。`;
                     error.noRetry = true;
+                    error.type = 'billing_error';
                 } else {
                     userFriendlyError = `请求频率过高 (429)：已超出 API 的速率限制，脚本将在稍后自动重试。`;
                     error.type = 'rate_limit';
@@ -3273,7 +3566,7 @@
                 error.type = 'server_overloaded';
                 break;
             case 503:
-                if (apiErrorMessage.includes('Slow Down')) {
+                if (apiErrorMessage && apiErrorMessage.includes('Slow Down')) {
                     userFriendlyError = `服务暂时过载 (503 - Slow Down)：由于您的请求速率突然增加，服务暂时受到影响。请稍等片刻，脚本将自动重试。`;
                 } else {
                     userFriendlyError = `服务器当前过载 (503)：${name} 的服务器正经历高流量，脚本将在稍后自动重试。`;
@@ -3393,24 +3686,7 @@
                     break;
             }
         } else {
-            switch (res.status) {
-                case 401:
-                    userFriendlyError = `API Key 无效或认证失败 (401)：请在设置面板中检查您的 ${name} API Key 是否正确填写。`;
-                    error.noRetry = true;
-                    break;
-                case 429:
-                    userFriendlyError = `请求频率过高 (429)：已超出 API 的速率限制，脚本将在稍后自动重试。`;
-                    error.type = 'rate_limit';
-                    break;
-                case 500:
-                    userFriendlyError = `服务器内部错误 (500)：${name} 的服务器遇到未知问题，脚本将在稍后自动重试。`;
-                    error.type = 'server_overloaded';
-                    break;
-                default:
-                    userFriendlyError = `发生未知 API 错误 (代码: ${res.status})。`;
-                    error.noRetry = true;
-                    break;
-            }
+            return new BaseApiClient({ name })._handleError(res, responseData);
         }
 
         error.message = userFriendlyError + `\n\n原始错误信息：\n${apiErrorMessage}`;
@@ -3452,9 +3728,7 @@
                 error.type = 'server_overloaded';
                 break;
             default:
-                userFriendlyError = `发生未知 API 错误 (代码: ${res.status})。`;
-                error.noRetry = true;
-                break;
+                return new BaseApiClient({ name })._handleError(res, responseData);
         }
 
         error.message = userFriendlyError + `\n\n原始错误信息：\n${apiErrorMessage}`;
@@ -3481,30 +3755,12 @@
                     userFriendlyError = `请求格式错误 (400)：您的国家/地区可能不支持 Gemini API 的免费套餐，请在 Google AI Studio 中启用结算。`;
                     error.noRetry = true;
                     break;
-                case 403:
-                    userFriendlyError = `权限被拒绝 (403)：您的 API Key 没有所需权限。请检查您的 API Key 设置。`;
-                    error.noRetry = true;
-                    break;
-                case 404:
-                    userFriendlyError = `资源未找到 (404)：请求中引用的资源（如模型名称）不存在。`;
-                    error.noRetry = true;
-                    break;
                 case 429:
                     userFriendlyError = `请求频率过高 (429)：已超出 API 的速率限制，脚本将在稍后自动重试。`;
                     error.type = 'rate_limit';
                     break;
-                case 500:
-                    userFriendlyError = `服务器内部错误 (500)：Google 服务器遇到意外错误，脚本将在稍后自动重试。`;
-                    error.type = 'server_overloaded';
-                    break;
-                case 503:
-                    userFriendlyError = `服务不可用 (503)：${name} 的服务器暂时过载或不可用，脚本将在稍后自动重试。`;
-                    error.type = 'server_overloaded';
-                    break;
                 default:
-                    userFriendlyError = `发生未知 API 错误 (代码: ${res.status})。`;
-                    error.noRetry = true;
-                    break;
+                    return new BaseApiClient({ name })._handleError(res, res.response);
             }
         } else {
             userFriendlyError = `发生未知错误：${message}`;
@@ -3516,7 +3772,7 @@
     }
 
     /**
-     * Together AI、Groq AI 的错误处理策略
+     * Together AI、Groq AI、Cerebras 的通用错误处理策略
      */
     function _handleTogetherAiError(res, name, responseData) {
         const apiErrorMessage = getNestedProperty(responseData, 'error.message') || getNestedProperty(responseData, 'message') || res.statusText;
@@ -3539,11 +3795,11 @@
                 break;
             case 403:
             case 413:
-                userFriendlyError = `请求被拒绝 (${res.status})：这通常意味着输入内容过长，超过了模型的上下文长度限制。请尝试翻译更短的文本段落。`;
+                userFriendlyError = `请求内容过长 (${res.status})：发送的文本量超过了模型的上下文长度限制。请尝试翻译更短的文本段落。`;
                 error.noRetry = true;
                 break;
             case 404:
-                userFriendlyError = `模型或终结点不存在 (404)：您选择的模型名称可能已失效。请尝试在设置面板中切换至其她模型。`;
+                userFriendlyError = `模型或接口地址不存在 (404)：您选择的模型名称可能已失效，或接口地址不正确。请尝试在设置面板中切换至其她模型或检查接口地址。`;
                 error.noRetry = true;
                 break;
             case 429:
@@ -3551,28 +3807,39 @@
                 error.type = 'rate_limit';
                 break;
             case 500:
+                userFriendlyError = `服务器内部错误 (500)：${name} 的服务器遇到问题，脚本将在稍后自动重试。`;
+                error.type = 'server_overloaded';
+                break;
             case 502:
+                userFriendlyError = `网关错误 (502)：上游服务器响应无效。这通常是临时问题，脚本将自动重试。`;
+                error.type = 'server_overloaded';
+                break;
             case 503:
-                userFriendlyError = `服务器错误 (${res.status})：${name} 的服务器暂时不可用，脚本将在稍后自动重试。`;
+                userFriendlyError = `服务过载 (503)：${name} 的服务器当前流量过高，脚本将在稍后自动重试。`;
                 error.type = 'server_overloaded';
                 break;
             default:
-                userFriendlyError = `发生未知 API 错误 (代码: ${res.status})。`;
-                error.noRetry = true;
-                break;
+                return new BaseApiClient({ name })._handleError(res, responseData);
         }
 
         error.message = userFriendlyError + `\n\n原始错误信息：\n${apiErrorMessage}`;
         return error;
     }
 
-    API_ERROR_HANDLERS['openai'] = _handleOpenaiError;
-    API_ERROR_HANDLERS['anthropic'] = _handleAnthropicError;
-    API_ERROR_HANDLERS['zhipu_ai'] = _handleZhipuAiError;
-    API_ERROR_HANDLERS['deepseek_ai'] = _handleDeepseekAiError;
-    API_ERROR_HANDLERS['groq_ai'] = _handleTogetherAiError;
-    API_ERROR_HANDLERS['together_ai'] = _handleTogetherAiError;
-    API_ERROR_HANDLERS['cerebras_ai'] = _handleTogetherAiError;
+    /**
+     * API 错误处理策略注册表
+     */
+    const API_ERROR_HANDLERS = {
+        'openai': _handleOpenaiError,
+        'anthropic': _handleAnthropicError,
+        'zhipu_ai': _handleZhipuAiError,
+        'deepseek_ai': _handleDeepseekAiError,
+        'google_ai': _handleGoogleAiError,
+        'groq_ai': _handleTogetherAiError,
+        'together_ai': _handleTogetherAiError,
+        'cerebras_ai': _handleTogetherAiError,
+        'modelscope_ai': _handleTogetherAiError
+    };
 
     /**
      * 为词形变体创建正则表达式
@@ -4050,45 +4317,76 @@
                     !(node.nodeType === Node.TEXT_NODE && !node.nodeValue.trim())
                 );
 
-                const separator = replacement.includes('·') || replacement.includes('・') ? /[·・]/ : /[\s-－﹣—–]+/;
-                const joinSeparator = replacement.includes('·') || replacement.includes('・') ? '·' : ' ';
-                const translationParts = replacement.split(separator);
-
                 if (DEBUG_MODE) {
                     console.log(`  - 原始HTML被分解为 ${htmlChunks.length} 个结构块:`, htmlChunks.map(c => c.cloneNode(true)));
-                    console.log(`  - 译文被分解为 ${translationParts.length} 个部分 (使用分隔符 "${separator}"):`, translationParts);
                 }
 
-                if (htmlChunks.length === translationParts.length) {
-                    if (DEBUG_MODE) console.log(`  - 验证通过：结构块数量与译文部分数量匹配。开始注入...`);
-                    htmlChunks.forEach((chunk, index) => {
-                        const part = translationParts[index];
-                        if (DEBUG_MODE) console.log(`    - 注入部分 #${index + 1}: 将 "${part}" 注入到`, chunk.cloneNode(true));
-                        replaceTextInNode(chunk, part);
-                    });
+                let finalHTML = '';
 
-                    const finalHTML = htmlChunks.map(chunk => {
-                        return chunk.nodeType === Node.ELEMENT_NODE ? chunk.outerHTML : chunk.nodeValue;
-                    }).join(joinSeparator);
-
-                    if (DEBUG_MODE) console.log(`  - 重组后的最终HTML:`, finalHTML);
-                    processedText = processedText.replace(regex, finalHTML);
+                if (htmlChunks.length === 1) {
+                    if (DEBUG_MODE) {
+                        console.log(`  - 决策: 原文为单一结构块，将完整译文注入。`);
+                    }
+                    const singleChunk = htmlChunks[0];
+                    replaceTextInNode(singleChunk, replacement);
+                    finalHTML = singleChunk.nodeType === Node.ELEMENT_NODE ? singleChunk.outerHTML : singleChunk.nodeValue;
+                    if (DEBUG_MODE) {
+                        console.log(`  - 注入后的HTML:`, finalHTML);
+                    }
                 } else {
                     if (DEBUG_MODE) {
-                        console.warn(`  - [回退] HTML结构块数量 (${htmlChunks.length}) 与译文部分数量 (${translationParts.length}) 不匹配！`);
-                        console.warn(`  - 执行安全回退：将完整译文注入，可能会丢失内部格式。`);
+                        console.log(`  - 决策: 原文为多结构块，尝试拆分译文以匹配。`);
                     }
-                    tempDiv.innerHTML = originalHTML;
-                    tempDiv.textContent = replacement;
-                    const fallbackHTML = tempDiv.innerHTML;
-                    if (DEBUG_MODE) console.log(`  - 回退生成的HTML:`, fallbackHTML);
-                    processedText = processedText.replace(regex, fallbackHTML);
+                    const separator = replacement.includes('·') || replacement.includes('・') ? /[·・]/ : /[\s-－﹣—–]+/;
+                    const joinSeparator = replacement.includes('·') || replacement.includes('・') ? '·' : ' ';
+                    const translationParts = replacement.split(separator);
+
+                    if (DEBUG_MODE) {
+                        console.log(`  - 译文被分解为 ${translationParts.length} 个部分 (使用分隔符 "${separator}"):`, translationParts);
+                    }
+
+                    if (htmlChunks.length === translationParts.length) {
+                        if (DEBUG_MODE) {
+                            console.log(`  - 验证通过：结构块数量与译文部分数量匹配。开始注入...`);
+                        }
+                        htmlChunks.forEach((chunk, index) => {
+                            const part = translationParts[index];
+                            if (DEBUG_MODE) {
+                                console.log(`    - 注入部分 #${index + 1}: 将 "${part}" 注入到`, chunk.cloneNode(true));
+                            }
+                            replaceTextInNode(chunk, part);
+                        });
+
+                        finalHTML = htmlChunks.map(chunk => {
+                            return chunk.nodeType === Node.ELEMENT_NODE ? chunk.outerHTML : chunk.nodeValue;
+                        }).join(joinSeparator);
+                        if (DEBUG_MODE) {
+                            console.log(`  - 重组后的最终HTML:`, finalHTML);
+                        }
+                    } else {
+                        if (DEBUG_MODE) {
+                            console.warn(`  - [回退] HTML结构块数量 (${htmlChunks.length}) 与译文部分数量 (${translationParts.length}) 不匹配！`);
+                            console.warn(`  - 执行安全回退：将完整译文注入，可能会丢失内部格式。`);
+                        }
+                        tempDiv.innerHTML = originalHTML;
+                        tempDiv.textContent = replacement;
+                        finalHTML = tempDiv.innerHTML;
+                        if (DEBUG_MODE) {
+                            console.log(`  - 回退生成的HTML:`, finalHTML);
+                        }
+                    }
                 }
+                processedText = processedText.replace(regex, finalHTML);
+
             } else {
-                if (DEBUG_MODE) console.log(`  - (Regex策略) 直接替换为目标内容。`);
+                if (DEBUG_MODE) {
+                    console.log(`  - (Regex策略) 直接替换为目标内容。`);
+                }
                 processedText = processedText.replace(regex, replacement);
             }
-            if (DEBUG_MODE) console.groupEnd();
+            if (DEBUG_MODE) {
+                console.groupEnd();
+            }
         }
 
         return applyPostTranslationReplacements(processedText);
@@ -4097,7 +4395,21 @@
     /**
      * 段落翻译函数，集成了术语表、禁翻和后处理替换逻辑
      */
-    async function translateParagraphs(paragraphs, { maxRetries = 3 } = {}) {
+    async function translateParagraphs(paragraphs, { maxRetries = 3, isCancelled = () => false } = {}) {
+        const createCancellationError = () => {
+            const error = new Error('用户已取消翻译。');
+            error.type = 'user_cancelled';
+            error.noRetry = true;
+            return error;
+        };
+
+        if (isCancelled()) {
+            if (DEBUG_MODE) console.log('translateParagraphs 入口检测到取消信号，立即中止。');
+            throw createCancellationError();
+        }
+
+        if (DEBUG_MODE) console.log(`translateParagraphs 开始执行。isCancelled 初始状态: ${isCancelled()}`);
+
         if (!paragraphs || paragraphs.length === 0) {
             return new Map();
         }
@@ -4131,6 +4443,7 @@
                 const preprocessedParagraphs = [];
                 const CHUNK_PROCESSING_SIZE = 5;
                 for (let i = 0; i < contentToTranslate.length; i++) {
+                    if (isCancelled()) throw createCancellationError();
                     const p = contentToTranslate[i];
                     preprocessedParagraphs.push(_preprocessParagraph(p.original, rules, placeholders, placeholderCache, engineName));
                     if ((i + 1) % CHUNK_PROCESSING_SIZE === 0) {
@@ -4146,7 +4459,7 @@
                     legalPlaceholders.add(key);
                 }
 
-                const combinedTranslation = await requestRemoteTranslation(preprocessedParagraphs);
+                const combinedTranslation = await requestRemoteTranslation(preprocessedParagraphs, { retryCount: 0, maxRetries: 3, isCancelled });
 
                 lastTranslationAttempt = combinedTranslation;
                 lastPlaceholdersMap = placeholders;
@@ -4241,52 +4554,73 @@
                 return finalResults;
 
             } catch (e) {
-                if (DEBUG_MODE) {
-                    console.error(`翻译尝试 #${retryCount + 1} 失败:`, e);
+                if (isCancelled() || e.type === 'user_cancelled') {
+                    if (DEBUG_MODE) console.log('catch 块检测到取消信号，抛出取消错误。');
+                    throw createCancellationError();
                 }
-                if (retryCount < maxRetries) {
-                    await sleep(500 * (retryCount + 1));
-                    continue;
-                } else {
-                    if (e.message.includes('分段数量不匹配') && paragraphs.length > 1) {
-                        if (DEBUG_MODE) {
-                            console.warn('批量翻译失败，正在尝试逐段回退翻译...');
-                        }
-                        const fallbackResults = new Map();
-                        for (const p of paragraphs) {
-                            const singleResultMap = await translateParagraphs([p], { maxRetries: 0 });
-                            const singleResult = singleResultMap.get(p);
-                            fallbackResults.set(p, singleResult || { status: 'error', content: '逐段翻译失败' });
-                        }
-                        return fallbackResults;
-                    }
 
-                    const restoredTranslation = _postprocessAndRestoreText(lastTranslationAttempt, lastPlaceholdersMap, engineName);
-                    let translatedParts = [];
-                    const regex = /\d+\.\s*([\s\S]*?)(?=\n\d+\.|$)/g;
-                    let match;
-                    while ((match = regex.exec(restoredTranslation)) !== null) {
-                        translatedParts.push(match[1].trim());
-                    }
-                    const finalResults = new Map();
-                    indexedParagraphs.forEach(p => {
-                        if (p.isSeparator) {
-                            finalResults.set(p.original, { status: 'success', content: p.content });
-                        } else {
-                            const originalPara = contentToTranslate.find(item => item.index === p.index);
-                            if (originalPara) {
-                                const transIndex = contentToTranslate.indexOf(originalPara);
-                                const content = translatedParts[transIndex] || `翻译失败：${e.message}`;
-                                const cleanedContent = AdvancedTranslationCleaner.clean(content);
-                                finalResults.set(p.original, { status: 'success', content: cleanedContent });
-                            }
-                        }
-                    });
-                    if (DEBUG_MODE) {
-                        console.error('所有重试均失败，返回部分或错误结果。');
-                    }
-                    return finalResults;
+                if (DEBUG_MODE) {
+                    console.error(`尝试 #${retryCount + 1} 失败:`, e);
                 }
+
+                if (e.noRetry) {
+                    throw e;
+                }
+
+                if (retryCount < maxRetries) {
+                    const delay = 500 * (retryCount + 1);
+                    if (DEBUG_MODE) console.log(`准备进行第 ${retryCount + 2} 次重试，等待 ${delay}ms。isCancelled 状态: ${isCancelled()}`);
+                    await sleep(delay);
+                    if (isCancelled()) {
+                        if (DEBUG_MODE) console.log('等待后检测到取消信号，中止重试。');
+                        throw createCancellationError();
+                    }
+                    continue;
+                }
+
+                if (e.message.includes('分段数量不匹配') && paragraphs.length > 1) {
+                    if (isCancelled()) throw createCancellationError();
+                    if (DEBUG_MODE) {
+                        console.warn('批量翻译失败，正在尝试逐段回退翻译...');
+                    }
+                    const fallbackResults = new Map();
+                    for (const p of paragraphs) {
+                        if (isCancelled()) {
+                            if (DEBUG_MODE) console.log('逐段回退时检测到取消信号，中断回退。');
+                            break;
+                        }
+                        const singleResultMap = await translateParagraphs([p], { maxRetries: 0, isCancelled });
+                        const singleResult = singleResultMap.get(p);
+                        fallbackResults.set(p, singleResult || { status: 'error', content: '逐段翻译失败' });
+                    }
+                    return fallbackResults;
+                }
+
+                const restoredTranslation = _postprocessAndRestoreText(lastTranslationAttempt, lastPlaceholdersMap, engineName);
+                let translatedParts = [];
+                const regex = /\d+\.\s*([\s\S]*?)(?=\n\d+\.|$)/g;
+                let match;
+                while ((match = regex.exec(restoredTranslation)) !== null) {
+                    translatedParts.push(match[1].trim());
+                }
+                const finalResults = new Map();
+                indexedParagraphs.forEach(p => {
+                    if (p.isSeparator) {
+                        finalResults.set(p.original, { status: 'success', content: p.content });
+                    } else {
+                        const originalPara = contentToTranslate.find(item => item.index === p.index);
+                        if (originalPara) {
+                            const transIndex = contentToTranslate.indexOf(originalPara);
+                            const content = translatedParts[transIndex] || `翻译失败：${e.message}`;
+                            const cleanedContent = AdvancedTranslationCleaner.clean(content);
+                            finalResults.set(p.original, { status: 'success', content: cleanedContent });
+                        }
+                    }
+                });
+                if (DEBUG_MODE) {
+                    console.error('所有重试均失败，返回部分或错误结果。');
+                }
+                return finalResults;
             }
         }
     }
@@ -4302,6 +4636,11 @@
             observer: null,
             isCancellationRequested: false,
 
+            instanceState: {
+                elementState: new WeakMap(),
+                isFirstTranslationChunk: true,
+            },
+
             updateButtonState: function(text, stateClass = '') {
                 if (buttonWrapper) {
                     const button = buttonWrapper.querySelector('div');
@@ -4314,6 +4653,10 @@
 
             start: function() {
                 if (this.state === 'running') return;
+
+                containerElement.querySelectorAll('[data-translation-state="translating"]').forEach(unit => {
+                    delete unit.dataset.translationState;
+                });
 
                 this.state = 'running';
                 this.isCancellationRequested = false;
@@ -4330,37 +4673,58 @@
                     this.observer = runTranslationEngineWithObserver({
                         containerElement: containerElement,
                         isCancelled: () => this.isCancellationRequested,
-                        onProgress: () => {},
-                        onComplete: onComplete
+                        onProgress: (translated, total) => {
+                            if (DEBUG_MODE) {
+                                console.log(`[翻译进度] ${translated}/${total} 段已处理。`);
+                            }
+                        },
+                        onComplete: onComplete,
+                        instanceState: this.instanceState
                     });
                 } else {
                     runTranslationEngineForBlock(containerElement, () => this.isCancellationRequested, onComplete);
                 }
             },
 
-            stop: function() {
+            pause: function() {
                 if (this.state !== 'running') return;
 
-                this.state = 'paused';
                 this.isCancellationRequested = true;
+                if (DEBUG_MODE) console.log('[UI控制] pause: 用户请求暂停，isCancellationRequested 设置为 true。');
                 if (this.observer) {
                     this.observer.disconnect();
                     this.observer = null;
                 }
-                this.updateButtonState(originalButtonText, 'state-idle');
+                
+                this.state = 'paused';
+                this.updateButtonState('暂停中…', 'state-paused');
+            },
+
+            resume: function() {
+                if (this.state !== 'paused') return;
+                
+                this.start();
             },
 
             clear: function() {
-                this.stop();
+                this.isCancellationRequested = true;
+                if (DEBUG_MODE) console.log('[UI控制] clear: 用户请求清除，isCancellationRequested 设置为 true。');
+                if (this.observer) {
+                    this.observer.disconnect();
+                    this.observer = null;
+                }
 
                 const translationNodes = containerElement.querySelectorAll('.translated-by-ao3-script, .translated-by-ao3-script-error');
                 translationNodes.forEach(node => node.remove());
 
-                containerElement.querySelectorAll('[data-translation-state="translated"]').forEach(originalUnit => {
-                    originalUnit.style.display = '';
-                    delete originalUnit.dataset.translationState;
+                containerElement.querySelectorAll('[data-translation-state]').forEach(unit => {
+                    unit.style.display = '';
+                    delete unit.dataset.translationState;
                 });
 
+                this.instanceState.elementState = new WeakMap();
+                this.instanceState.isFirstTranslationChunk = true;
+                
                 this.state = 'idle';
                 this.updateButtonState(originalButtonText, 'state-idle');
             },
@@ -4368,11 +4732,13 @@
             handleClick: function() {
                 switch (this.state) {
                     case 'idle':
-                    case 'paused':
                         this.start();
                         break;
                     case 'running':
-                        this.stop();
+                        this.pause();
+                        break;
+                    case 'paused':
+                        this.resume();
                         break;
                     case 'complete':
                         this.clear();
@@ -4391,7 +4757,9 @@
         const translatableSelectors = 'p, blockquote, li, h1, h2, h3:not(.landmark), h4, h5, h6';
         let allPotentialUnits = Array.from(containerElement.querySelectorAll(translatableSelectors));
 
-        if (allPotentialUnits.length === 0 && containerElement.textContent.trim()) {
+        allPotentialUnits = allPotentialUnits.filter(el => !el.closest('.translated-by-ao3-script, .translated-by-ao3-script-error'));
+
+        if (allPotentialUnits.length === 0 && containerElement.textContent.trim() && !containerElement.querySelector(translatableSelectors)) {
             allPotentialUnits = [containerElement];
         }
 
@@ -4408,7 +4776,19 @@
 
         units.forEach(unit => unit.dataset.translationState = 'translating');
 
-        const translationResults = await translateParagraphs(units);
+        let translationResults;
+        try {
+            translationResults = await translateParagraphs(units, { isCancelled });
+        } catch (error) {
+            if (error.type === 'user_cancelled') {
+                units.forEach(unit => delete unit.dataset.translationState);
+                return;
+            }
+            translationResults = new Map();
+            units.forEach(unit => {
+                translationResults.set(unit, { status: 'error', content: error.message || '未知错误' });
+            });
+        }
 
         if (isCancelled()) {
             units.forEach(unit => delete unit.dataset.translationState);
@@ -4432,6 +4812,7 @@
                     }
                 } else {
                     transNode.className = 'translated-by-ao3-script-error';
+                    newTranslatedElement.innerHTML = `翻译失败：${result.content.replace('翻译失败：', '')}`;
                     unit.dataset.translationState = 'error';
                 }
                 transNode.appendChild(newTranslatedElement);
@@ -4449,17 +4830,20 @@
      * 翻译引擎（懒加载模式）
      */
     function runTranslationEngineWithObserver(options) {
-        const { containerElement, isCancelled, onProgress, onComplete } = options;
-        const elementState = new WeakMap();
+        const { containerElement, isCancelled, onComplete, instanceState, onProgress = () => {} } = options;
+        const { elementState } = instanceState;
         let isProcessing = false;
         const translationQueue = new Set();
         let scheduleTimeout = null;
         let flushTimeout = null;
 
         function preProcessAndGetUnits(container) {
-            const elementsToProcess = container.querySelectorAll('p, blockquote');
+            const brSplitSelectors = 'p, blockquote';
+            const elementsToProcessForSplit = Array.from(container.querySelectorAll(brSplitSelectors))
+                .filter(el => !el.closest('.translated-by-ao3-script, .translated-by-ao3-script-error'));
+
             const elementsToModify = [];
-            elementsToProcess.forEach(el => {
+            elementsToProcessForSplit.forEach(el => {
                 if (elementState.has(el)) return;
                 const hasBrSeparators = (el.innerHTML.match(/(?:<br\s*\/?>\s*)+/i));
                 if (hasBrSeparators) {
@@ -4485,11 +4869,17 @@
 
             const translatableSelectors = 'p, blockquote, li, h1, h2, h3, h4, h5, h6, hr';
             const allPotentialUnits = Array.from(container.querySelectorAll(translatableSelectors));
+            const userGeneratedUnits = allPotentialUnits.filter(el => !el.closest('.translated-by-ao3-script, .translated-by-ao3-script-error'));
+
             const skippableHeaders = ['Summary', 'Notes', 'Work Text', 'Chapter Text'];
-            const candidateUnits = allPotentialUnits.filter(p => !skippableHeaders.includes(p.textContent.trim()));
+            const candidateUnits = userGeneratedUnits.filter(p => !skippableHeaders.includes(p.textContent.trim()));
+
             const finalUnits = [];
             for (const unit of candidateUnits) {
-                if (!unit.querySelector(translatableSelectors)) {
+                const nestedTranslatables = unit.querySelectorAll(translatableSelectors);
+                const hasUserGeneratedNested = Array.from(nestedTranslatables).some(nested => !nested.closest('.translated-by-ao3-script, .translated-by-ao3-script-error'));
+
+                if (!hasUserGeneratedNested) {
                     finalUnits.push(unit);
                 }
             }
@@ -4512,7 +4902,11 @@
         };
 
         const processQueue = async (forceFlush = false) => {
-            if (isCancelled() || isProcessing || translationQueue.size === 0) return;
+            if (isCancelled()) {
+                if (DEBUG_MODE) console.log('[懒加载引擎] processQueue 检测到取消信号，终止处理。');
+                return;
+            }
+            if (isProcessing || translationQueue.size === 0) return;
 
             clearTimeout(flushTimeout);
 
@@ -4523,7 +4917,7 @@
             const offscreenInQueue = allQueuedUnits.filter(p => !visibleInQueue.includes(p));
             const prioritizedUnits = [...visibleInQueue, ...offscreenInQueue];
 
-            const runType = isFirstTranslationChunk ? 'first' : 'subsequent';
+            const runType = instanceState.isFirstTranslationChunk ? 'first' : 'subsequent';
             const engineName = getValidEngineName();
             const modelId = getCurrentModelId(engineName);
             let paragraphLimit = CONFIG[runType === 'first' ? 'PARAGRAPH_LIMIT' : 'SUBSEQUENT_PARAGRAPH_LIMIT'];
@@ -4564,17 +4958,45 @@
             if (chunkToSend.length === 0) return;
 
             isProcessing = true;
-            if (isFirstTranslationChunk) isFirstTranslationChunk = false;
+            if (instanceState.isFirstTranslationChunk) instanceState.isFirstTranslationChunk = false;
             chunkToSend.forEach(p => {
                 translationQueue.delete(p);
                 p.dataset.translationState = 'translating';
             });
 
+            if (DEBUG_MODE) {
+                console.log(`[懒加载引擎] processQueue 开始处理 ${chunkToSend.length} 个段落。isCancelled 状态: ${isCancelled()}`);
+            }
+
             try {
                 const paragraphsToTranslate = chunkToSend.filter(p => p.tagName !== 'HR' && p.textContent.trim().length > 0);
-                const translationResults = paragraphsToTranslate.length > 0 ? await translateParagraphs(paragraphsToTranslate) : new Map();
+                let translationResults;
+                try {
+                    translationResults = paragraphsToTranslate.length > 0 ? await translateParagraphs(paragraphsToTranslate, { isCancelled }) : new Map();
+                } catch (error) {
+                    if (error.type === 'user_cancelled') {
+                        if (DEBUG_MODE) console.log('[懒加载引擎] processQueue 捕获到用户取消错误，提前返回。');
+                        chunkToSend.forEach(p => {
+                            if (p.dataset.translationState === 'translating') delete p.dataset.translationState;
+                        });
+                        isProcessing = false;
+                        return;
+                    }
+                    translationResults = new Map();
+                    paragraphsToTranslate.forEach(unit => {
+                        translationResults.set(unit, { status: 'error', content: error.message || '未知错误' });
+                    });
+                }
 
-                if (isCancelled()) return;
+                if (isCancelled()) {
+                    if (DEBUG_MODE) console.log('[懒加载引擎] processQueue 在翻译后检测到取消信号，终止渲染。');
+                    chunkToSend.forEach(p => {
+                        if (p.dataset.translationState === 'translating') {
+                            delete p.dataset.translationState;
+                        }
+                    });
+                    return;
+                }
 
                 for (const p of chunkToSend) {
                     observer.unobserve(p);
@@ -4609,7 +5031,7 @@
                 }
             } finally {
                 isProcessing = false;
-                if (onProgress) onProgress(translatedUnits, totalUnits);
+                onProgress(translatedUnits, totalUnits);
 
                 if (translatedUnits >= totalUnits) {
                     if (onComplete) onComplete();
@@ -4623,6 +5045,7 @@
         const scheduleProcessing = (force = false) => {
             if (isCancelled()) return;
             clearTimeout(scheduleTimeout);
+            if (DEBUG_MODE) console.log(`[懒加载引擎] scheduleProcessing: 安排在 300ms 后处理队列 (强制: ${force})。`);
             scheduleTimeout = setTimeout(() => processQueue(force), 300);
         };
 
@@ -4643,6 +5066,7 @@
             let addedToQueue = false;
             entries.forEach(entry => {
                 if (entry.isIntersecting && !entry.target.dataset.translationState) {
+                    if (DEBUG_MODE) console.log('[懒加载引擎] IntersectionObserver: 元素进入视野，加入队列。', entry.target);
                     translationQueue.add(entry.target);
                     addedToQueue = true;
                 }
@@ -5047,7 +5471,7 @@
             if (!normalizedTerm) return;
 
             if (termSeparatorRegex.test(normalizedTerm)) {
-                processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm);
+                processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm, false);
                 return;
             }
 
@@ -5062,7 +5486,7 @@
             }
         }
 
-        function processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm) {
+        function processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm, isFromEqualsSyntax) {
             const normalizedTerm = term.trim();
             const isForbidden = type.includes('FORBIDDEN');
             const normalizedTranslation = !isForbidden ? translation.trim() : null;
@@ -5070,7 +5494,7 @@
             if (!normalizedTerm || (!normalizedTranslation && !isForbidden)) return;
 
             const termParts = normalizedTerm.split(termSeparatorRegex);
-            if (termParts.length <= 1) {
+            if (termParts.length <= 1 && !isFromEqualsSyntax) {
                 processSinglePartTerm(term, translation, type, isLocal, timestamp, source, originalTerm);
                 return;
             }
@@ -5083,7 +5507,7 @@
                 Array.from(generateWordForms(part, { preserveCase: isForbidden || isGeneral }))
             );
 
-            const isUnorderedEligible = (type === 'LOCAL_TERM' || type === 'ONLINE_TERM');
+            const isUnorderedEligible = isFromEqualsSyntax && (type === 'LOCAL_TERM' || type === 'ONLINE_TERM');
 
             addRule({
                 termForms: termPartsWithForms,
@@ -5098,7 +5522,7 @@
                 isUnordered: isUnorderedEligible
             });
 
-            if (!isForbidden && originalTerm.includes('=')) {
+            if (!isForbidden && isFromEqualsSyntax) {
                 const translationParts = normalizedTranslation.split(/[\s·・]+/);
                 if (termParts.length === translationParts.length) {
                     termParts.forEach((part, i) => {
@@ -5121,7 +5545,7 @@
                 const normalizedEntry = entry.replace(/[：＝]/g, (match) => ({ '：': ':', '＝': '=' }[match]));
                 const multiPartMatch = normalizedEntry.match(/^\s*(.+?)\s*=\s*(.+?)\s*$/);
                 if (multiPartMatch) {
-                    processMultiPartTerm(multiPartMatch[1], multiPartMatch[2], 'LOCAL_TERM', true, 0, '本地术语', entry.trim());
+                    processMultiPartTerm(multiPartMatch[1], multiPartMatch[2], 'LOCAL_TERM', true, 0, '本地术语', entry.trim(), true);
                     return;
                 }
                 const singlePartMatch = normalizedEntry.match(/^\s*(.+?)\s*:\s*(.+?)\s*$/);
@@ -5148,8 +5572,8 @@
             (g.forbiddenTerms || []).forEach(term => processSinglePartTerm(term, null, 'ONLINE_FORBIDDEN', false, timestamp, sourceName, term));
             Object.entries(g.terms || {}).forEach(([k, v]) => processSinglePartTerm(k, v, 'ONLINE_TERM', false, timestamp, sourceName, `${k}:${v}`));
             Object.entries(g.generalTerms || {}).forEach(([k, v]) => processSinglePartTerm(k, v, 'ONLINE_GENERAL_TERM', false, timestamp, sourceName, `${k}:${v}`));
-            Object.entries(g.multiPartTerms || {}).forEach(([k, v]) => processMultiPartTerm(k, v, 'ONLINE_TERM', false, timestamp, sourceName, `${k}=${v}`));
-            Object.entries(g.multiPartGeneralTerms || {}).forEach(([k, v]) => processMultiPartTerm(k, v, 'ONLINE_GENERAL_TERM', false, timestamp, sourceName, `${k}=${v}`));
+            Object.entries(g.multiPartTerms || {}).forEach(([k, v]) => processMultiPartTerm(k, v, 'ONLINE_TERM', false, timestamp, sourceName, `${k}=${v}`, true));
+            Object.entries(g.multiPartGeneralTerms || {}).forEach(([k, v]) => processMultiPartTerm(k, v, 'ONLINE_GENERAL_TERM', false, timestamp, sourceName, `${k}=${v}`, true));
             (g.regexTerms || []).forEach(({ pattern, replacement }) => {
                 if (!processedLocalKeys.has(pattern.toLowerCase())) {
                     addRule({ termForms: pattern, translation: replacement, type: 'ONLINE_REGEX', isLocal: false, timestamp, source: sourceName, originalTerm: `${pattern}:${replacement}` });
@@ -5178,7 +5602,6 @@
 
         return rules;
     }
-
 
     /**
      * 为单个英文单词生成其常见词形变体
@@ -6190,6 +6613,7 @@
                     if (p2 && !p3) return 'profile';
                     break;
                 case 'works':
+                    if (document.querySelector('div#main.works-update')) return 'works_edit';
                     if (p2 === 'new') return 'works_new';
                     if (p2 === 'search') return isSearchResultsPage ? 'works_search_results' : 'works_search';
                     if (p2 && /^\d+$/.test(p2)) {
