@@ -19,17 +19,23 @@
     - [远程版](https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/main.user.js)
     - [本地版](https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/local.user.js)
 5.  网盘链接：
-    - [视频教程及相关文件](https://pan.baidu.com/s/1JVAj6vEVVrxu4h86sBNkVw?pwd=o1je)
+    - [相关文件](https://pan.baidu.com/s/1JVAj6vEVVrxu4h86sBNkVw?pwd=o1je)
 
 ## 📖 使用说明
 
 - 安装脚本后，访问 [AO3 网站](https://archiveofourown.org/) ，界面将自动变为中文。
 - 如需使用翻译功能，请点击 `悬浮球` 或者 `Tampermonkey 图标` -> `AO3 汉化插件` -> `打开设置面板` -> `启用翻译功能`。在作品页面，你会看到新增的“翻译简介”、“翻译注释”、“翻译正文”等按钮，点击即可使用。
+- 教程相关：
+  - [常见问题](https://v-lipset.github.io/ao3-chinese/guide/FAQ.html)
+  - [翻译服务介绍](https://v-lipset.github.io/ao3-chinese/guide/provider)
+  - [在镜像站点上使用](https://v-lipset.github.io/ao3-chinese/guide/mirror.mp4)
+  - [添加接口地址域名白名单](https://v-lipset.github.io/ao3-chinese/guide/whitelist.html)
 - 术语表相关：
   - [在线术语库](https://github.com/V-Lipset/ao3-chinese/wiki/%E5%9C%A8%E7%BA%BF%E6%9C%AF%E8%AF%AD%E8%A1%A8)
-  - [术语表编写指南](https://github.com/V-Lipset/ao3-chinese/wiki#%E6%9C%AF%E8%AF%AD%E8%A1%A8%E7%BC%96%E5%86%99%E6%8C%87%E5%8D%97-v101)
-- 教程相关：
-  - [自定义翻译服务：添加接口地址域名白名单](https://v-lipset.github.io/ao3-chinese/guide/whitelist.html)
+  - [术语表编写指南](https://v-lipset.github.io/ao3-chinese/guide/guide.html)
+  - [分享你的术语表](https://v-lipset.github.io/ao3-chinese/guide/share.html)
+  - [创建在线术语表-桌面端](https://v-lipset.github.io/ao3-chinese/guide/online.html)
+  - [创建在线术语表-移动端](https://v-lipset.github.io/ao3-chinese/guide/online-mobile.mp4)
 
 ## 🤝 贡献与反馈
 
