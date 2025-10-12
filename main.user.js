@@ -2,10 +2,11 @@
 // @name         AO3 汉化插件
 // @namespace    https://github.com/V-Lipset/ao3-chinese
 // @description  中文化 AO3 界面，可调用 AI 实现简介、注释、评论以及全文翻译。
-// @version      1.5.4-2025-09-29
+// @version      1.5.5-2025-10-12
 // @author       V-Lipset
 // @license      GPL-3.0
 // @match        https://archiveofourown.org/*
+// @match        https://archiveofourown.gay/*
 // @match        https://xn--iao3-lw4b.ws/*
 // @match        https://ao3sg.hyf9588.tech/*
 // @icon         https://raw.githubusercontent.com/V-Lipset/ao3-chinese/main/assets/icon.png
@@ -27,6 +28,7 @@
 // @connect      api.together.xyz
 // @connect      api.cerebras.ai
 // @connect      api-inference.modelscope.cn
+// @connect      fanyi.baidu.com
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
@@ -57,35 +59,217 @@
     const ACTIVE_MODEL_PREFIX_KEY = 'active_model_for_';
     const ADD_NEW_CUSTOM_SERVICE_ID = 'add_new_custom';
 
-    // AI 翻译指令
-    const sharedSystemPrompt = `You are a professional translator fluent in Simplified Chinese (简体中文), with particular expertise in translating web novels and online fanfiction.
+	/**
+     * 语言选项常量
+     */
+    const ALL_LANG_OPTIONS = [
+        ["zh-CN", "简体中文"],
+        ["zh-TW", "繁體中文"],
+        ["ar", "العربية"],
+        ["bg", "Български"],
+        ["bn", "বাংলা"],
+        ["ca", "Català"],
+        ["cs", "Čeština"],
+        ["da", "Dansk"],
+        ["de", "Deutsch"],
+        ["el", "Ελληνικά"],
+        ["en", "English"],
+        ["es", "Español"],
+        ["et", "Eesti"],
+        ["fa", "فارسی"],
+        ["fi", "Suomi"],
+        ["fr", "Français"],
+        ["gu", "ગુજરાતી"],
+        ["he", "עברית"],
+        ["hi", "हिन्दी"],
+        ["hr", "Hrvatski"],
+        ["hu", "Magyar"],
+        ["id", "Indonesia"],
+        ["is", "Íslenska"],
+        ["it", "Italiano"],
+        ["ja", "日本語"],
+        ["kn", "ಕನ್ನಡ"],
+        ["ko", "한국어"],
+        ["lt", "Lietuvių"],
+        ["lv", "Latviešu"],
+        ["ml", "മലയാളം"],
+        ["mr", "मराठी"],
+        ["ms", "Melayu"],
+        ["mt", "Malti"],
+        ["nl", "Nederlands"],
+        ["no", "Norsk"],
+        ["pa", "ਪੰਜਾਬੀ"],
+        ["pl", "Polski"],
+        ["pt", "Português"],
+        ["ro", "Română"],
+        ["ru", "Русский"],
+        ["sk", "Slovenčina"],
+        ["sl", "Slovenščina"],
+        ["sv", "Svenska"],
+        ["sw", "Kiswahili"],
+        ["ta", "தமிழ்"],
+        ["te", "తెలుగు"],
+        ["th", "ไทย"],
+        ["tr", "Türkçe"],
+        ["uk", "Українська"],
+        ["ur", "اردو"],
+        ["vi", "Tiếng Việt"],
+        ["zu", "isiZulu"],
+    ];
 
-    Your task is to translate a numbered list of text segments provided by the user. These segments can be anything from full paragraphs to single phrases or words. For each numbered item, you will follow an internal three-stage strategy to produce the final, polished translation.
+	/**
+     * 语言代码到自然语言名称的映射
+     */
+    const LANG_CODE_TO_NAME = {
+        'zh-CN': 'Simplified Chinese (简体中文)',
+        'zh-TW': 'Traditional Chinese (繁體中文)',
+        'ar': 'Arabic (العربية)',
+        'bg': 'Bulgarian (Български)',
+        'bn': 'Bengali (বাংলা)',
+        'ca': 'Catalan (Català)',
+        'cs': 'Czech (Čeština)',
+        'da': 'Danish (Dansk)',
+        'de': 'German (Deutsch)',
+        'el': 'Greek (Ελληνικά)',
+        'en': 'English',
+        'es': 'Spanish (Español)',
+        'et': 'Estonian (Eesti)',
+        'fa': 'Persian (فارسی)',
+        'fi': 'Finnish (Suomi)',
+        'fr': 'French (Français)',
+        'gu': 'Gujarati (ગુજરાતી)',
+        'he': 'Hebrew (עברית)',
+        'hi': 'Hindi (हिन्दी)',
+        'hr': 'Croatian (Hrvatski)',
+        'hu': 'Hungarian (Magyar)',
+        'id': 'Indonesian (Indonesia)',
+        'is': 'Icelandic (Íslenska)',
+        'it': 'Italian (Italiano)',
+        'ja': 'Japanese (日本語)',
+        'kn': 'Kannada (ಕನ್ನಡ)',
+        'ko': 'Korean (한국어)',
+        'lt': 'Lithuanian (Lietuvių)',
+        'lv': 'Latvian (Latviešu)',
+        'ml': 'Malayalam (മലയാളം)',
+        'mr': 'Marathi (मराठी)',
+        'ms': 'Malay (Melayu)',
+        'mt': 'Maltese (Malti)',
+        'nl': 'Dutch (Nederlands)',
+        'no': 'Norwegian (Norsk)',
+        'pa': 'Punjabi (ਪੰਜਾਬੀ)',
+        'pl': 'Polish (Polski)',
+        'pt': 'Portuguese (Português)',
+        'ro': 'Romanian (Română)',
+        'ru': 'Russian (Русский)',
+        'sk': 'Slovak (Slovenčina)',
+        'sl': 'Slovenian (Slovenščina)',
+        'sv': 'Swedish (Svenska)',
+        'sw': 'Swahili (Kiswahili)',
+        'ta': 'Tamil (தமிழ்)',
+        'te': 'Telugu (తెలుగు)',
+        'th': 'Thai (ไทย)',
+        'tr': 'Turkish (Türkçe)',
+        'uk': 'Ukrainian (Українська)',
+        'ur': 'Urdu (اردو)',
+        'vi': 'Vietnamese (Tiếng Việt)',
+        'zu': 'Zulu (isiZulu)',
+    };
 
-    ### Internal Translation Strategy (for each item):
-    1.  **Stage 1 (Internal Thought Process):** Produce a literal, word-for-word translation of the English content.
-    2.  **Stage 2 (Internal Thought Process):** Based on the literal translation, identify any phrasing that is unnatural or does not flow well in Chinese.
-    3.  **Stage 3 (Final Output):** Produce a polished, idiomatic translation that fully preserves the original meaning, tone, cultural nuances, and any specialized fandom terminology. The final translation must be natural-sounding, readable, and conform to standard Chinese usage.
+	/**
+     * 针对不同目标语言的输出示例数据
+     */
+    const PROMPT_EXAMPLE_OUTPUTS = {
+        'zh-CN': `1. 这是<em>第一个</em>句子。\n2. ---\n3. 她的名字是 ph_123456。\n4. 这是第四个句子。`,
+        'zh-TW': `1. 這是<em>第一個</em>句子。\n2. ---\n3. 她的名字是 ph_123456。\n4. 這是第四個句子。`,
+        'ar': `1. هذه هي الجملة <em>الأولى</em>.\n2. ---\n3. اسمها هو ph_123456.\n4. هذه هي الجملة الرابعة.`,
+        'bg': `1. Това е <em>първото</em> изречение.\n2. ---\n3. Нейното име е ph_123456.\n4. Това е четвъртото изречение.`,
+        'bn': `1. এটি <em>প্রথম</em> বাক্য।\n2. ---\n3. তার নাম ph_123456।\n4. এটি চতুর্থ বাক্য।`,
+        'ca': `1. Aquesta és la <em>primera</em> frase.\n2. ---\n3. El seu nom és ph_123456.\n4. Aquesta és la quarta frase.`,
+        'cs': `1. Toto je <em>první</em> věta.\n2. ---\n3. Jmenuje se ph_123456.\n4. Toto je čtvrtá věta.`,
+        'da': `1. Dette er den <em>første</em> sætning.\n2. ---\n3. Hendes navn er ph_123456.\n4. Dette er den fjerde sætning.`,
+        'de': `1. Das ist der <em>erste</em> Satz.\n2. ---\n3. Ihr Name ist ph_123456.\n4. Das ist der vierte Satz.`,
+        'el': `1. Αυτή είναι η <em>πρώτη</em> πρόταση.\n2. ---\n3. Το όνομά της είναι ph_123456.\n4. Αυτή είναι η τέταρτη πρόταση.`,
+        'es': `1. Esta es la <em>primera</em> frase.\n2. ---\n3. Su nombre es ph_123456.\n4. Esta es la cuarta frase.`,
+        'et': `1. See on <em>esimene</em> lause.\n2. ---\n3. Tema nimi on ph_123456.\n4. See on neljas lause.`,
+        'fa': `1. این <em>اولین</em> جمله است.\n2. ---\n3. نام او ph_123456 است.\n4. این چهارمین جمله است.`,
+        'fi': `1. Tämä on <em>ensimmäinen</em> lause.\n2. ---\n3. Hänen nimensä on ph_123456.\n4. Tämä on neljäs lause.`,
+        'fr': `1. C'est la <em>première</em> phrase.\n2. ---\n3. Son nom est ph_123456.\n4. C'est la quatrième phrase.`,
+        'gu': `1. આ <em>પહેલું</em> વાક્ય છે।\n2. ---\n3. તેનું નામ ph_123456 છે।\n4. આ ચોથું વાક્ય છે।`,
+        'he': `1. זהו המשפט ה<em>ראשון</em>.\n2. ---\n3. שמה הוא ph_123456.\n4. זהו המשפט הרביעי.`,
+        'hi': `1. यह <em>पहला</em> वाक्य है।\n2. ---\n3. उसका नाम ph_123456 है।\n4. यह चौथा वाक्य है।`,
+        'hr': `1. Ovo je <em>prva</em> rečenica.\n2. ---\n3. Njeno ime je ph_123456.\n4. Ovo je četvrta rečenica.`,
+        'hu': `1. Ez az <em>első</em> mondat.\n2. ---\n3. A neve ph_123456.\n4. Ez a negyedik mondat.`,
+        'id': `1. Ini adalah kalimat <em>pertama</em>.\n2. ---\n3. Namanya adalah ph_123456.\n4. Ini adalah kalimat keempat.`,
+        'is': `1. Þetta er <em>fyrsta</em> setningin.\n2. ---\n3. Hún heitir ph_123456.\n4. Þetta er fjórða setningin.`,
+        'it': `1. Questa è la <em>prima</em> frase.\n2. ---\n3. Il suo nome è ph_123456.\n4. Questa è la quarta frase.`,
+        'ja': `1. これは<em>最初の</em>文です。\n2. ---\n3. 彼女の名前は ph_123456 です。\n4. これは4番目の文です。`,
+        'kn': `1. ಇದು <em>ಮೊದಲ</em> ವಾಕ್ಯ।\n2. ---\n3. ಅವಳ ಹೆಸರು ph_123456।\n4. ಇದು ನಾಲ್ಕನೇ ವಾಕ್ಯ।`,
+        'ko': `1. 이것은 <em>첫 번째</em> 문장입니다。\n2. ---\n3. 그녀의 이름은 ph_123456 입니다。\n4. 이것은 네 번째 문장입니다。`,
+        'lt': `1. Tai yra <em>pirmas</em> sakinys.\n2. ---\n3. Jos vardas yra ph_123456.\n4. Tai yra ketvirtas sakinys.`,
+        'lv': `1. Šis ir <em>pirmais</em> teikums.\n2. ---\n3. Viņas vārds ir ph_123456.\n4. Šis ir ceturtais teikums.`,
+        'ml': `1. ഇതാണ് <em>ഒന്നാമത്തെ</em> വാക്യം।\n2. ---\n3. അവളുടെ പേര് ph_123456 എന്നാണ്।\n4. ഇതാണ് നാലാമത്തെ വാക്യം।`,
+        'mr': `1. हे <em>पहिले</em> वाक्य आहे।\n2. ---\n3. तिचे नाव ph_123456 आहे।\n4. हे चौथे वाक्य आहे।`,
+        'ms': `1. Ini adalah ayat <em>pertama</em>.\n2. ---\n3. Namanya ialah ph_123456.\n4. Ini adalah ayat keempat.`,
+        'mt': `1. Din hija l-<em>ewwel</em> sentenza.\n2. ---\n3. Jisimha hu ph_123456.\n4. Din hija r-raba' sentenza.`,
+        'nl': `1. Dit is de <em>eerste</em> zin.\n2. ---\n3. Haar naam is ph_123456.\n4. Dit is de vierde zin.`,
+        'no': `1. Dette er den <em>første</em> setningen.\n2. ---\n3. Hennes navn er ph_123456.\n4. Dette er den fjerde setningen.`,
+        'pa': `1. ਇਹ <em>ਪਹਿਲਾ</em> ਵਾਕ ਹੈ।\n2. ---\n3. ਉਸਦਾ ਨਾਮ ph_123456 ਹੈ।\n4. ਇਹ ਚੌਥਾ ਵਾਕ ਹੈ।`,
+        'pl': `1. To jest <em>pierwsze</em> zdanie.\n2. ---\n3. Nazywa się ph_123456.\n4. To jest czwarte zdanie.`,
+        'pt': `1. Esta é a <em>primeira</em> frase.\n2. ---\n3. O nome dela é ph_123456.\n4. Esta é a quarta frase.`,
+        'ro': `1. Aceasta este <em>prima</em> propoziție.\n2. ---\n3. Numele ei este ph_123456.\n4. Aceasta este a patra propoziție.`,
+        'ru': `1. Это <em>первое</em> предложение.\n2. ---\n3. Её зовут ph_123456.\n4. Это четвёртое предложение.`,
+        'sk': `1. Toto je <em>prvá</em> veta.\n2. ---\n3. Volá sa ph_123456.\n4. Toto je štvrtá veta.`,
+        'sl': `1. To je <em>prvi</em> stavek.\n2. ---\n3. Ime ji je ph_123456.\n4. To je četrti stavek.`,
+        'sv': `1. Detta är den <em>första</em> meningen.\n2. ---\n3. Hennes namn är ph_123456.\n4. Detta är den fjärde meningen.`,
+        'sw': `1. Hii ni sentensi ya <em>kwanza</em>.\n2. ---\n3. Jina lake ni ph_123456.\n4. Hii ni sentensi ya nne.`,
+        'ta': `1. இது <em>முதல்</em> வாக்கியம்.\n2. ---\n3. அவள் பெயர் ph_123456.\n4. இது நான்காவது வாக்கியம்.`,
+        'te': `1. ఇది <em>మొదటి</em> వాక్యం.\n2. ---\n3. ఆమె పేరు ph_123456.\n4. ఇది నాల్గవ వాక్యం.`,
+        'th': `1. นี่คือประโยค<em>แรก</em>\n2. ---\n3. ชื่อของเธอคือ ph_123456\n4. นี่คือประโยคที่สี่`,
+        'tr': `1. Bu <em>birinci</em> cümledir.\n2. ---\n3. Onun adı ph_123456.\n4. Bu dördüncü cümledir.`,
+        'uk': `1. Це <em>перше</em> речення.\n2. ---\n3. Її звати ph_123456.\n4. Це четверте речення.`,
+        'ur': `1. یہ <em>پہلا</em> جملہ ہے۔\n2. ---\n3. اس کا نام ph_123456 ہے۔\n4. یہ چوتھا جملہ ہے۔`,
+        'vi': `1. Đây là câu <em>đầu tiên</em>.\n2. ---\n3. Tên cô ấy là ph_123456.\n4. Đây là câu thứ tư.`,
+        'zu': `1. Lona umusho <em>wokuqala</em>.\n2. ---\n3. Igama lakhe ngu-ph_123456.\n4. Lona umusho wesine.`,
+        'default': `1. This is the <em>first</em> sentence.\n2. ---\n3. Her name is ph_123456.\n4. This is the fourth sentence.`
+    };
 
-    ### CRITICAL OUTPUT INSTRUCTIONS:
-    - Your entire response MUST consist of *only* the polished Chinese translation from Stage 3, formatted as a numbered list that exactly matches the input's numbering.
-    - Do NOT include any stage numbers, headers (e.g., "Polished Translation"), notes, or explanations in your final output.
-    - **HTML Tag Preservation:** If an item contains HTML tags (e.g., \`<em>\`, \`<strong>\`), you MUST preserve these tags exactly as they are in the original, including their positions around the translated text.
-    - **Placeholder Preservation:** If an item contains special placeholders in the format \`ph_\` followed by six digits (e.g., \`ph_123456\`), you MUST preserve these placeholders exactly as they are. DO NOT translate, modify, add spaces to, delete, or alter them in any way.
-    - **Untranslatable Content:** If an item is a separator, a meaningless symbol, or otherwise untranslatable, you MUST return the original item exactly as it is, preserving its number.
+/**
+     * 根据目标语言动态生成完整的提示示例
+     */
+    function generatePromptExample(toLang) {
+        const exampleOutputText = PROMPT_EXAMPLE_OUTPUTS[toLang] || PROMPT_EXAMPLE_OUTPUTS['zh-CN'];
+        return `### Example Output:\n${exampleOutputText}`;
+    }
 
-    ### Example Input:
-    1. This is the <em>first</em> sentence.
-    2. ---
-    3. Her name is ph_123456.
-    4. This is the fourth sentence.
+/**
+     * 获取 AI 翻译系统提示词模板
+     */
+    function getSharedSystemPrompt() {
+        return `You are a professional translator fluent in {toLangName}, with particular expertise in translating web novels and online fanfiction from {fromLangName}.
 
-    ### Example Output:
-    1. 这是<em>第一个</em>句子。
-    2. ---
-    3. 她的名字是 ph_123456。
-    4. 这是第四个句子。
-    `;
+Your task is to translate a numbered list of text segments provided by the user. These segments can be anything from full paragraphs to single phrases or words. For each numbered item, you will follow an internal three-stage strategy to produce the final, polished translation.
+
+### Internal Translation Strategy (for each item):
+1.  **Stage 1 (Internal Thought Process):** Produce a literal, word-for-word translation of the original content.
+2.  **Stage 2 (Internal Thought Process):** Based on the literal translation, identify any phrasing that is unnatural or does not flow well in the target language.
+3.  **Stage 3 (Final Output):** Produce a polished, idiomatic translation that fully preserves the original meaning, tone, cultural nuances, and any specialized fandom terminology. The final translation must be natural-sounding, readable, and conform to standard usage in {toLangName}.
+
+### CRITICAL OUTPUT INSTRUCTIONS:
+- Your entire response MUST consist of *only* the polished translation from Stage 3, formatted as a numbered list that exactly matches the input's numbering.
+- Do NOT include any stage numbers, headers (e.g., "Polished Translation"), notes, or explanations in your final output.
+- **HTML Tag Preservation:** If an item contains HTML tags (e.g., \`<em>\`, \`<strong>\`), you MUST preserve these tags exactly as they are in the original, including their positions around the translated text.
+- **Placeholder Preservation:** If an item contains special placeholders in the format \`ph_\` followed by six digits (e.g., \`ph_123456\`), you MUST preserve these placeholders exactly as they are. DO NOT translate, modify, add spaces to, delete, or alter them in any way.
+- **Untranslatable Content:** If an item is a separator, a meaningless symbol, or otherwise untranslatable, you MUST return the original item exactly as it is, preserving its number.
+
+### Example Input:
+1. This is the <em>first</em> sentence.
+2. ---
+3. Her name is ph_123456.
+4. This is the fourth sentence.
+
+{exampleOutput}
+		`;
+    }
 
     // 创建一个标准的、兼容OpenAI API的服务配置对象
     const createStandardApiConfig = ({ name, url }) => ({
@@ -96,7 +280,7 @@
         responseIdentifier: 'choices[0].message.content',
     });
 
-    // 底层实现配置
+	// 底层实现配置
     const CONFIG = {
         LANG: 'zh-CN',
         PAGE_MAP: { 'archiveofourown.org': 'ao3' },
@@ -112,44 +296,16 @@
         transEngine: GM_getValue('transEngine', 'google_translate'),
 
         // 默认文本分块、懒加载边距
-		CHUNK_SIZE: 1600,
+        CHUNK_SIZE: 1600,
         PARAGRAPH_LIMIT: 8,
-		SUBSEQUENT_CHUNK_SIZE: 2400,
-        SUBSEQUENT_PARAGRAPH_LIMIT: 12,
         LAZY_LOAD_ROOT_MARGIN: '400px 0px 1000px 0px',
 
-        // 特殊引擎/模型分块、懒加载
+        // 谷歌翻译文本分块、懒加载边距
         MODEL_SPECIFIC_LIMITS: {
             'google_translate': {
-                first: {
-                    CHUNK_SIZE: 4000,
-                    PARAGRAPH_LIMIT: 20,
-                },
-                subsequent: {
-                    CHUNK_SIZE: 5000,
-                    PARAGRAPH_LIMIT: 25,
-                },
+                CHUNK_SIZE: 4000,
+                PARAGRAPH_LIMIT: 20,
                 LAZY_LOAD_ROOT_MARGIN: '1200px 0px 3000px 0px',
-            },
-            'gemini-2.5-pro': {
-                first: {
-                    CHUNK_SIZE: 2400,
-                    PARAGRAPH_LIMIT: 12,
-                },
-                subsequent: {
-                    CHUNK_SIZE: 3000,
-                    PARAGRAPH_LIMIT: 15,
-                }
-            },
-            'deepseek-reasoner': {
-                first: {
-                    CHUNK_SIZE: 2400,
-                    PARAGRAPH_LIMIT: 12,
-                },
-                subsequent: {
-                    CHUNK_SIZE: 3000,
-                    PARAGRAPH_LIMIT: 15,
-                }
             }
         },
 
@@ -567,13 +723,13 @@
         };
     }
 
-    /**
+	/**
      * 聚合所有用户配置和数据以供导出
      */
     async function exportAllData() {
         const allData = {
             metadata: {
-                exportFormatVersion: "1.0",
+                exportFormatVersion: "1.1",
                 scriptVersion: GM_info.script.version,
                 exportDate: getShanghaiTimeString(),
             },
@@ -583,40 +739,55 @@
                 modelSelections: {},
                 customServices: [],
                 glossaries: {},
-                uiState: {}
+                uiState: {},
+                aiParameters: {}
             }
         };
 
         const staticKeys = [
             'enable_RegExp', 'enable_transDesc', 'show_fab', 'transEngine',
-            'translation_display_mode', 'ao3_glossary_last_action'
+            'translation_display_mode', 'ao3_glossary_last_action',
+            'from_lang', 'to_lang'
         ];
         for (const key of staticKeys) {
-            allData.data.staticKeys[key] = GM_getValue(key);
+            const value = GM_getValue(key);
+            if (value !== undefined) {
+                allData.data.staticKeys[key] = value;
+            }
         }
 
         const builtInServices = Object.keys(engineMenuConfig)
-            .filter(id => id !== 'google_translate' && id !== 'add_new_custom')
+            .filter(id => id !== 'google_translate' && id !== ADD_NEW_CUSTOM_SERVICE_ID)
             .sort();
         for (const serviceId of builtInServices) {
-            allData.data.apiKeys[`${serviceId}_keys_string`] = GM_getValue(`${serviceId}_keys_string`);
+            const apiKey = GM_getValue(`${serviceId}_keys_string`);
+            if (apiKey !== undefined) {
+                allData.data.apiKeys[`${serviceId}_keys_string`] = apiKey;
+            }
             if (engineMenuConfig[serviceId].modelGmKey) {
-                allData.data.modelSelections[engineMenuConfig[serviceId].modelGmKey] = GM_getValue(engineMenuConfig[serviceId].modelGmKey);
+                const model = GM_getValue(engineMenuConfig[serviceId].modelGmKey);
+                if (model !== undefined) {
+                    allData.data.modelSelections[engineMenuConfig[serviceId].modelGmKey] = model;
+                }
             }
         }
 
         const customServicesList = GM_getValue(CUSTOM_SERVICES_LIST_KEY, []);
         customServicesList.sort((a, b) => a.id.localeCompare(b.id));
         for (const service of customServicesList) {
+            const apiKey = GM_getValue(`${service.id}_keys_string`);
             allData.data.customServices.push({
                 id: service.id,
                 name: service.name,
                 url: service.url,
-                apiKey: GM_getValue(`${service.id}_keys_string`),
+                apiKey: apiKey,
                 modelsRaw: service.modelsRaw,
                 selectedModel: GM_getValue(`${ACTIVE_MODEL_PREFIX_KEY}${service.id}`),
                 lastAction: GM_getValue(`custom_service_last_action_${service.id}`)
             });
+            if (apiKey !== undefined) {
+                allData.data.apiKeys[`${service.id}_keys_string`] = apiKey;
+            }
         }
 
         allData.data.glossaries = {
@@ -632,18 +803,30 @@
             panelPosition: GM_getValue('ao3_panel_position')
         };
 
+        const aiParamKeys = [
+            'custom_ai_system_prompt', 'custom_ai_user_prompt', 'custom_ai_temperature',
+            'custom_ai_chunk_size', 'custom_ai_para_limit', 'custom_ai_lazy_load_margin',
+            'ao3_ai_param_last_action'
+        ];
+        for (const key of aiParamKeys) {
+            const value = GM_getValue(key);
+            if (value !== undefined) {
+                allData.data.aiParameters[key] = value;
+            }
+        }
+
         return allData;
     }
 
-    /**
+	/**
      * 校验并导入用户配置数据，并自动同步在线术语表
      */
     async function importAllData(jsonData, syncPanelStateCallback) {
-        if (!jsonData || !jsonData.metadata || !jsonData.data || jsonData.metadata.exportFormatVersion !== "1.0") {
-            return { success: false, message: "文件格式无效或版本不兼容。" };
+        if (!jsonData || typeof jsonData !== 'object' || !jsonData.data || typeof jsonData.data !== 'object') {
+            return { success: false, message: "文件格式无效或文件已损坏：缺少核心 'data' 模块。" };
         }
 
-        const { data } = jsonData;
+        const data = jsonData.data;
 
         if (data.staticKeys) {
             for (const [key, value] of Object.entries(data.staticKeys)) {
@@ -653,9 +836,7 @@
 
         if (data.apiKeys) {
             for (const [key, value] of Object.entries(data.apiKeys)) {
-                if (value !== undefined) {
-                    GM_setValue(key, value);
-                }
+                if (value !== undefined) GM_setValue(key, value);
             }
         }
         if (data.modelSelections) {
@@ -675,16 +856,20 @@
 
             const newServiceList = [];
             for (const service of data.customServices) {
+                if (!service || typeof service.id !== 'string') continue;
                 newServiceList.push({
                     id: service.id,
                     name: service.name,
                     url: service.url,
                     modelsRaw: service.modelsRaw,
-                    models: String(service.modelsRaw).replace(/[，]/g, ',').split(',').map(m => m.trim()).filter(Boolean)
+                    models: String(service.modelsRaw || '').replace(/[，]/g, ',').split(',').map(m => m.trim()).filter(Boolean)
                 });
-                GM_setValue(`${service.id}_keys_string`, service.apiKey);
-                GM_setValue(`${ACTIVE_MODEL_PREFIX_KEY}${service.id}`, service.selectedModel);
-                GM_setValue(`custom_service_last_action_${service.id}`, service.lastAction);
+
+                const apiKeyToSet = service.apiKey !== undefined ? service.apiKey : (data.apiKeys ? data.apiKeys[`${service.id}_keys_string`] : undefined);
+                if (apiKeyToSet !== undefined) GM_setValue(`${service.id}_keys_string`, apiKeyToSet);
+
+                if (service.selectedModel !== undefined) GM_setValue(`${ACTIVE_MODEL_PREFIX_KEY}${service.id}`, service.selectedModel);
+                if (service.lastAction !== undefined) GM_setValue(`custom_service_last_action_${service.id}`, service.lastAction);
             }
             GM_setValue(CUSTOM_SERVICES_LIST_KEY, newServiceList);
         }
@@ -701,6 +886,12 @@
         if (data.uiState) {
             if (data.uiState.fabPosition) GM_setValue('ao3_fab_position', data.uiState.fabPosition);
             if (data.uiState.panelPosition) GM_setValue('ao3_panel_position', data.uiState.panelPosition);
+        }
+
+        if (data.aiParameters) {
+            for (const [key, value] of Object.entries(data.aiParameters)) {
+                if (value !== undefined) GM_setValue(key, value);
+            }
         }
 
         synchronizeAllSettings(syncPanelStateCallback);
@@ -829,9 +1020,25 @@
                 display: flex; align-items: center; justify-content: center;
                 font-size: 24px; color: rgba(0, 0, 0, 0.54);
             }
-            .settings-panel-body { padding: 18px 16px 16px; display: flex; flex-direction: column; gap: 16px; max-height: 70vh; overflow-y: auto; }
+            .settings-panel-body { padding: 16px 16px 16px; display: flex; flex-direction: column; gap: 16px; max-height: 70vh; overflow-y: auto; }
+            .settings-panel-body::-webkit-scrollbar,
+            .custom-dropdown-menu ul::-webkit-scrollbar,
+            .settings-group textarea.settings-control::-webkit-scrollbar {
+                width: 5px;
+            }
+            .settings-panel-body::-webkit-scrollbar-track,
+            .custom-dropdown-menu ul::-webkit-scrollbar-track,
+            .settings-group textarea.settings-control::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .settings-panel-body::-webkit-scrollbar-thumb,
+            .custom-dropdown-menu ul::-webkit-scrollbar-thumb,
+            .settings-group textarea.settings-control::-webkit-scrollbar-thumb {
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 3px;
+            }
 
-            .settings-switch-group { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
+            .settings-switch-group { display: flex; justify-content: space-between; align-items: center; padding: 0; }
             .settings-panel-body > .settings-switch-group:first-child {
                 padding-left: 14px;
             }
@@ -845,6 +1052,34 @@
             .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
             input:checked + .slider { background-color: #209CEE; }
             input:checked + .slider:before { transform: translateX(20px); }
+
+            .language-swap-container {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+            }
+            .language-swap-container .settings-group {
+                flex: 1;
+                min-width: 0;
+            }
+            #swap-lang-btn {
+                background: none;
+                border: none;
+                cursor: pointer;
+                font-size: 18px;
+                color: #555;
+                padding: 0 4px;
+                line-height: 1;
+                transition: color 0.2s ease;
+                flex-shrink: 0;
+            }
+            #swap-lang-btn:disabled {
+                color: #a9a9a9;
+                cursor: default;
+            }
+            #swap-lang-btn:focus {
+                outline: none;
+            }
 
             .settings-group { position: relative; }
             .settings-group.ao3-trans-control-disabled {
@@ -876,6 +1111,24 @@
                 line-height: 40px;
                 color: #000000DE;
                 box-shadow: none;
+                min-width: 0;
+            }
+            .settings-group textarea.settings-control {
+                height: 72px !important;
+                min-height: 72px !important;
+                max-height: 72px !important;
+                line-height: 1.5;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                resize: none;
+            }
+            .settings-group input[type="number"] {
+                -moz-appearance: textfield;
+            }
+            .settings-group input[type="number"]::-webkit-inner-spin-button,
+            .settings-group input[type="number"]::-webkit-outer-spin-button {
+                -webkit-appearance: none;
+                margin: 0;
             }
             .settings-group .settings-control:hover { border-color: var(--ao3-trans-border-hover); }
             .settings-group .settings-control:focus {
@@ -942,6 +1195,9 @@
 
             .input-wrapper { position: relative; }
             .input-wrapper .settings-input { padding-right: 52px !important; }
+            #ai-param-input-area .input-wrapper textarea.settings-input {
+                padding-right: 12px !important;
+            }
             .settings-action-button-inline {
                 position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
                 background: none; border: none; color: var(--ao3-trans-primary-color);
@@ -1043,7 +1299,7 @@
             .custom-dropdown-menu li .item-text {
                 white-space: nowrap;
                 overflow: hidden;
-                text-overflow: ellipsis;
+                text-overflow: clip;
                 flex-grow: 1;
             }
             .custom-dropdown-menu li .item-actions {
@@ -1068,16 +1324,6 @@
             }
             .custom-dropdown-menu li .item-action-btn.delete[data-confirming="true"] {
                 color: var(--ao3-trans-danger-color);
-            }
-            .custom-dropdown-menu ul::-webkit-scrollbar {
-                width: 5px;
-            }
-            .custom-dropdown-menu ul::-webkit-scrollbar-track {
-                background: transparent;
-            }
-            .custom-dropdown-menu ul::-webkit-scrollbar-thumb {
-                background: rgba(0, 0, 0, 0.2);
-                border-radius: 3px;
             }
             #custom-service-url-notice {
                 font-size: 12px;
@@ -1154,6 +1400,10 @@
             .data-sync-action-btn:focus {
                 outline: none;
             }
+            div.translate-me-ao3-wrapper > div {
+                -webkit-tap-highlight-color: transparent;
+                outline: none;
+            }
         `);
 
         const panel = document.createElement('div');
@@ -1177,6 +1427,18 @@
                         <input type="checkbox" id="setting-master-switch">
                         <span class="slider"></span>
                     </label>
+                </div>
+
+                <div class="language-swap-container">
+                    <div class="settings-group settings-group-select">
+                        <select id="setting-from-lang" class="settings-control settings-select custom-styled-select"></select>
+                        <label for="setting-from-lang" class="settings-label">原文语言</label>
+                    </div>
+                    <button id="swap-lang-btn" title="互换">⇄</button>
+                    <div class="settings-group settings-group-select">
+                        <select id="setting-to-lang" class="settings-control settings-select custom-styled-select"></select>
+                        <label for="setting-to-lang" class="settings-label">目标语言</label>
+                    </div>
                 </div>
 
                 <div class="settings-group settings-group-select">
@@ -1215,6 +1477,7 @@
                         <option value="import">导入在线术语表</option>
                         <option value="manage">管理在线术语表</option>
                         <option value="post_replace">译文后处理替换</option>
+                        <option value="ai_settings">翻译参数自定义</option>
                         <option value="data_sync">数据导入与导出</option>
                     </select>
                     <label for="setting-glossary-actions" class="settings-label">更多功能</label>
@@ -1223,6 +1486,21 @@
                 <div id="data-sync-actions-container" class="data-sync-actions-container" style="display: none;">
                     <button id="btn-import-data" class="data-sync-action-btn">数据导入</button>
                     <button id="btn-export-data" class="data-sync-action-btn">数据导出</button>
+                </div>
+
+                <div id="editable-section-ai-settings" class="editable-section" style="display: none; flex-direction: column; gap: 16px;">
+                    <div class="settings-group static-label settings-group-select">
+                        <select id="ai-param-select" class="settings-control settings-select custom-styled-select">
+                            <option value="system_prompt">System Prompt</option>
+                            <option value="user_prompt">User Prompt</option>
+                            <option value="temperature">Temperature</option>
+                            <option value="chunk_size">每次翻译文本量</option>
+                            <option value="para_limit">每次翻译段落数</option>
+                            <option value="lazy_load_margin">懒加载参数设置</option>
+                        </select>
+                        <label for="ai-param-select" class="settings-label">参数选择</label>
+                    </div>
+                    <div id="ai-param-input-area"></div>
                 </div>
 
                 <div id="editable-section-glossary-local" class="settings-group static-label editable-section">
@@ -1275,7 +1553,10 @@
             closeBtn: panel.querySelector('.settings-panel-close-btn'),
             header: panel.querySelector('.settings-panel-header'),
             masterSwitch: panel.querySelector('#setting-master-switch'),
+            swapLangBtn: panel.querySelector('#swap-lang-btn'),
             engineSelect: panel.querySelector('#setting-trans-engine'),
+            fromLangSelect: panel.querySelector('#setting-from-lang'),
+            toLangSelect: panel.querySelector('#setting-to-lang'),
             modelGroup: panel.querySelector('#setting-model-group'),
             modelSelect: panel.querySelector('#setting-trans-model'),
             displayModeSelect: panel.querySelector('#setting-display-mode'),
@@ -1285,6 +1566,9 @@
             customServiceContainer: panel.querySelector('#custom-service-container'),
             glossaryActionsSelect: panel.querySelector('#setting-glossary-actions'),
             editableSections: panel.querySelectorAll('.editable-section'),
+            aiSettingsSection: panel.querySelector('#editable-section-ai-settings'),
+            aiParamSelect: panel.querySelector('#ai-param-select'),
+            aiParamInputArea: panel.querySelector('#ai-param-input-area'),
             glossaryLocalSection: panel.querySelector('#editable-section-glossary-local'),
             glossaryLocalInput: panel.querySelector('#setting-input-glossary-local'),
             glossaryLocalSaveBtn: panel.querySelector('#setting-btn-glossary-local-save'),
@@ -1311,10 +1595,10 @@
     /**
      * 显示一个自定义的确认模态框
      */
-    function showCustomConfirm(message, title = '请确认') {
+    function showCustomConfirm(message, title = '提示') {
         return new Promise((resolve, reject) => {
             if (document.getElementById('ao3-custom-confirm-overlay')) {
-                return reject(new Error('已有确认框正在显示中。'));
+                return reject(new Error('已有提示框正在显示中。'));
             }
 
             GM_addStyle(`
@@ -1425,6 +1709,10 @@
 
             isPendingCreation = false;
             currentServiceId = newService.id;
+
+            const lastActionKey = `custom_service_last_action_${currentServiceId}`;
+            GM_setValue(lastActionKey, currentEditSection);
+
             GM_setValue('transEngine', currentServiceId);
 
             return newService.id;
@@ -1591,7 +1879,7 @@
                             const confirmationMessage = `您正在添加一个自定义翻译服务接口地址。\n为了保护您的浏览器安全，油猴脚本要求您为这个新地址手动授权。\n您需要将刚才输入的接口地址域名添加到脚本的 “域名白名单” 中。这是一个首次设置时必须进行的一次性操作。\n点击 “确定” ，将跳转到一份图文版操作教程；点击 “取消” ，则不会进行跳转。\n此提示仅显示一次，是否跳转到教程页面？`;
                             try {
                                 await showCustomConfirm(confirmationMessage, '安全授权');
-                                window.open('https://v-lipset.github.io/ao3-chinese/guide/whitelist.html', '_blank');
+                                window.open('https://v-lipset.github.io/docs/guides/whitelist', '_blank');
                             } catch (e) {}
                         }
                     }
@@ -1779,13 +2067,40 @@
     }
 
     /**
+     * 清理无效的自定义服务配置
+     */
+    function cleanupAllEmptyCustomServices() {
+        const services = GM_getValue(CUSTOM_SERVICES_LIST_KEY, []);
+        const servicesToKeep = services.filter(s => {
+            const hasName = s.name && s.name.trim() !== '';
+            const hasUrl = s.url && s.url.trim() !== '';
+            const hasModels = s.models && s.models.length > 0;
+            const hasApiKey = GM_getValue(`${s.id}_keys_string`, '').trim() !== '';
+
+            return hasName || hasUrl || hasModels || hasApiKey;
+        });
+
+        if (services.length !== servicesToKeep.length) {
+            GM_setValue(CUSTOM_SERVICES_LIST_KEY, servicesToKeep);
+            const currentEngine = GM_getValue('transEngine');
+            const isCurrentEngineRemoved = !servicesToKeep.some(s => s.id === currentEngine);
+
+            if (isCurrentEngineRemoved && currentEngine.startsWith('custom_')) {
+                GM_setValue('transEngine', 'google_translate');
+            }
+        }
+    }
+
+    /**
      * 设置面板的内部逻辑
      */
     function initializeSettingsPanelLogic(panelElements, rerenderMenuCallback, onPanelCloseCallback) {
         const {
-            panel, closeBtn, header, masterSwitch, engineSelect, modelGroup, modelSelect, displayModeSelect,
+            panel, closeBtn, header, masterSwitch, swapLangBtn, engineSelect, fromLangSelect, toLangSelect,
+            modelGroup, modelSelect, displayModeSelect,
             apiKeyGroup, apiKeyInput, apiKeySaveBtn, customServiceContainer,
             glossaryActionsSelect, editableSections,
+            aiSettingsSection, aiParamSelect, aiParamInputArea,
             glossaryLocalSection, glossaryLocalInput, glossaryLocalSaveBtn,
             glossaryForbiddenSection, glossaryForbiddenInput, glossaryForbiddenSaveBtn,
             glossaryImportSection, glossaryImportUrlInput, glossaryImportSaveBtn,
@@ -1795,9 +2110,142 @@
             dataSyncActionsContainer, importDataBtn, exportDataBtn
         } = panelElements;
 
-        /**
-         * 根据选择的翻译服务ID更新UI
-         */
+        const PANEL_POSITION_KEY = 'ao3_panel_position';
+        const GLOSSARY_ACTION_KEY = 'ao3_glossary_last_action';
+        const AI_PARAM_ACTION_KEY = 'ao3_ai_param_last_action';
+        let isDragging = false;
+        let origin = { x: 0, y: 0 }, startPosition = { x: 0, y: 0 };
+        let activeDropdown = null;
+
+        const customServiceManager = createCustomServiceManager(panelElements, syncPanelState);
+
+		function renderAiParamEditor() {
+            const param = aiParamSelect.value;
+            aiParamInputArea.innerHTML = '';
+
+            const paramConfig = {
+                system_prompt: { type: 'textarea', key: 'custom_ai_system_prompt', autoSave: true },
+                user_prompt: { type: 'textarea', key: 'custom_ai_user_prompt', autoSave: true },
+                temperature: { type: 'number', key: 'custom_ai_temperature', attrs: { min: 0, max: 2, step: 0.1 }, hint: ' (0-2)' },
+                chunk_size: { type: 'number', key: 'custom_ai_chunk_size', attrs: { min: 100, step: 100 } },
+                para_limit: { type: 'number', key: 'custom_ai_para_limit', attrs: { min: 1, step: 1 } },
+                lazy_load_margin: { type: 'text', key: 'custom_ai_lazy_load_margin', hint: ' (px)' }
+            };
+
+            const defaults = {
+                system_prompt: () => getSharedSystemPrompt(),
+                user_prompt: () => `Translate the following numbered list to {toLangName}:\n\n{numberedText}`,
+                temperature: () => 0,
+                chunk_size: () => CONFIG.CHUNK_SIZE,
+                para_limit: () => CONFIG.PARAGRAPH_LIMIT,
+                lazy_load_margin: () => CONFIG.LAZY_LOAD_ROOT_MARGIN
+            };
+
+            const config = paramConfig[param];
+            if (!config) return;
+
+            const defaultValue = defaults[param]();
+            let displayValue = GM_getValue(config.key, defaultValue);
+
+            const section = document.createElement('div');
+            section.className = 'settings-group static-label';
+
+            const inputWrapper = document.createElement('div');
+            inputWrapper.className = 'input-wrapper';
+
+            const inputElement = document.createElement(config.type === 'textarea' ? 'textarea' : 'input');
+            inputElement.id = `ai-param-input-${param}`;
+            inputElement.className = 'settings-control settings-input';
+            if (param === 'system_prompt' || param === 'user_prompt') {
+                inputElement.setAttribute('spellcheck', 'false');
+            }
+            if (config.type !== 'textarea') {
+                inputElement.type = config.type;
+            }
+            if (config.attrs) {
+                Object.entries(config.attrs).forEach(([attr, val]) => inputElement.setAttribute(attr, val));
+            }
+            inputElement.value = displayValue;
+
+            const label = document.createElement('label');
+            label.htmlFor = inputElement.id;
+            label.className = 'settings-label';
+            let labelText = aiParamSelect.options[aiParamSelect.selectedIndex].text;
+            if (config.hint) {
+                labelText += config.hint;
+            }
+            label.textContent = labelText;
+
+            inputWrapper.appendChild(inputElement);
+            inputWrapper.appendChild(label);
+
+            if (!config.autoSave) {
+                const saveBtn = document.createElement('button');
+                saveBtn.className = 'settings-action-button-inline';
+                saveBtn.textContent = '保存';
+                inputWrapper.appendChild(saveBtn);
+
+                saveBtn.addEventListener('click', () => {
+                    let valueToSave = inputElement.value;
+                    if (config.type === 'number') {
+                        const numValue = parseInt(valueToSave, 10);
+                        if (isNaN(numValue) || (config.attrs.min !== undefined && numValue < config.attrs.min)) {
+                            valueToSave = config.attrs.min;
+                        } else {
+                            valueToSave = numValue;
+                        }
+                        inputElement.value = valueToSave;
+                    }
+                    GM_setValue(config.key, valueToSave);
+                    updateInputLabel(inputElement);
+                });
+            } else {
+                inputElement.addEventListener('blur', () => {
+                    let valueToSave = inputElement.value;
+                    GM_setValue(config.key, valueToSave);
+                });
+            }
+
+            section.appendChild(inputWrapper);
+            aiParamInputArea.appendChild(section);
+
+            updateInputLabel(inputElement);
+        }
+
+        function updateModelSelect(engineId) {
+            const config = engineMenuConfig[engineId];
+            modelGroup.style.display = 'none';
+
+            if (config && config.modelMapping) {
+                modelSelect.innerHTML = '';
+                Object.keys(config.modelMapping).forEach(modelId => {
+                    const option = document.createElement('option');
+                    option.value = modelId;
+                    option.textContent = config.modelMapping[modelId];
+                    modelSelect.appendChild(option);
+                });
+                modelSelect.disabled = false;
+                modelSelect.value = GM_getValue(config.modelGmKey, Object.keys(config.modelMapping)[0]);
+                modelGroup.style.display = 'block';
+            } else if (engineId.startsWith('custom_')) {
+                customServiceManager.renderDisplayModeModelSelect(engineId);
+            }
+        }
+
+        function updateApiKeySection(engineId) {
+            const config = engineMenuConfig[engineId];
+            if (config && config.requiresApiKey) {
+                apiKeyGroup.style.display = 'block';
+                const stringKeyName = `${engineId}_keys_string`;
+                apiKeyInput.value = GM_getValue(stringKeyName, '');
+                apiKeyGroup.querySelector('.settings-label').textContent = `设置 ${config.displayName} API Key`;
+                apiKeyInput.placeholder = 'Key 1，Key 2，Key 3';
+                updateInputLabel(apiKeyInput);
+            } else {
+                apiKeyGroup.style.display = 'none';
+            }
+        }
+
         function updateUiForEngine(engineId) {
             customServiceContainer.style.display = 'none';
             modelGroup.style.display = 'none';
@@ -1811,12 +2259,6 @@
             }
             updateAllLabels();
         }
-
-        const PANEL_POSITION_KEY = 'ao3_panel_position';
-        const GLOSSARY_ACTION_KEY = 'ao3_glossary_last_action';
-        let isDragging = false;
-        let origin = { x: 0, y: 0 }, startPosition = { x: 0, y: 0 };
-        let activeDropdown = null;
 
         const populateEngineSelect = () => {
             engineSelect.innerHTML = '';
@@ -1850,15 +2292,19 @@
             engineSelect.appendChild(createOption(ADD_NEW_CUSTOM_SERVICE_ID, engineMenuConfig[ADD_NEW_CUSTOM_SERVICE_ID]));
         };
 
-        const syncPanelState = () => {
+        function syncPanelState() {
             const isEnabled = GM_getValue('enable_transDesc', false);
             masterSwitch.checked = isEnabled;
 
             populateEngineSelect();
             const currentEngine = getValidEngineName();
             engineSelect.value = currentEngine;
-            
+
             updateUiForEngine(currentEngine);
+
+            fromLangSelect.value = GM_getValue('from_lang', 'auto');
+            toLangSelect.value = GM_getValue('to_lang', 'zh-CN');
+            updateSwapButtonState();
 
             displayModeSelect.value = GM_getValue('translation_display_mode', 'bilingual');
 
@@ -1870,24 +2316,7 @@
             });
 
             updateAllLabels();
-        };
-
-        const updateApiKeySection = (engineId) => {
-            const config = engineMenuConfig[engineId];
-            if (config && config.requiresApiKey) {
-                apiKeyGroup.style.display = 'block';
-                const stringKeyName = `${engineId}_keys_string`;
-                apiKeyInput.value = GM_getValue(stringKeyName, '');
-                apiKeyGroup.querySelector('.settings-label').textContent = `设置 ${config.displayName} API Key`;
-                apiKeyInput.placeholder = 'Key 1，Key 2，Key 3';
-                updateInputLabel(apiKeyInput);
-            } else {
-                apiKeyGroup.style.display = 'none';
-            }
-        };
-
-        panelElements.updateApiKeySection = updateApiKeySection;
-		const customServiceManager = createCustomServiceManager(panelElements, syncPanelState, populateEngineSelect);
+        }
 
         const isMobile = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
@@ -1955,33 +2384,13 @@
             editableSections.forEach(s => s.style.display = 'none');
             dataSyncActionsContainer.style.display = 'none';
             if (sectionToShow) {
-                if (sectionToShow.id === 'editable-section-glossary-manage') {
+                if (sectionToShow.id === 'editable-section-glossary-manage' || sectionToShow.id === 'editable-section-ai-settings') {
                     sectionToShow.style.display = 'flex';
                 } else {
                     sectionToShow.style.display = 'block';
                 }
                 const input = sectionToShow.querySelector('.settings-control');
                 if (input) updateInputLabel(input);
-            }
-        };
-
-        const updateModelSelect = (engineId) => {
-            const config = engineMenuConfig[engineId];
-            modelGroup.style.display = 'none';
-
-            if (config && config.modelMapping) {
-                modelSelect.innerHTML = '';
-                Object.keys(config.modelMapping).forEach(modelId => {
-                    const option = document.createElement('option');
-                    option.value = modelId;
-                    option.textContent = config.modelMapping[modelId];
-                    modelSelect.appendChild(option);
-                });
-                modelSelect.disabled = false;
-                modelSelect.value = GM_getValue(config.modelGmKey, Object.keys(config.modelMapping)[0]);
-                modelGroup.style.display = 'block';
-            } else if (engineId.startsWith('custom_')) {
-                customServiceManager.renderDisplayModeModelSelect(engineId);
             }
         };
 
@@ -1999,7 +2408,6 @@
             }
 
             if (!serviceIdToUpdate) {
-                notifyAndLog('无法保存 API Key，因为没有有效的服务被选中。', '保存错误', 'error');
                 return;
             }
 
@@ -2060,21 +2468,6 @@
             resetDeleteButton();
         };
 
-        const cleanupAllEmptyCustomServices = () => {
-            const services = GM_getValue(CUSTOM_SERVICES_LIST_KEY, []);
-            const servicesToKeep = services.filter(s => s.url || (s.models && s.models.length > 0));
-
-            if (services.length !== servicesToKeep.length) {
-                GM_setValue(CUSTOM_SERVICES_LIST_KEY, servicesToKeep);
-                const currentEngine = GM_getValue('transEngine');
-                const isCurrentEngineRemoved = !servicesToKeep.some(s => s.id === currentEngine);
-
-                if (isCurrentEngineRemoved && currentEngine.startsWith('custom_')) {
-                    GM_setValue('transEngine', 'google_translate');
-                }
-            }
-        };
-
         const handleExport = async () => {
             try {
                 const data = await exportAllData();
@@ -2084,17 +2477,17 @@
                 const a = document.createElement("a");
                 a.href = url;
                 const shanghaiDate = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Shanghai' }).slice(0, 10);
-                a.download = `AO3-Chinese-Plugin-Backup-${shanghaiDate}.json`;
+                a.download = `AO3-Chinese-Script-Backup-${shanghaiDate}.json`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                notifyAndLog("配置已成功导出！");
+                notifyAndLog('配置已成功导出！', '操作成功');
             } catch (e) {
+                notifyAndLog(`导出失败: ${e.message}`, '操作失败', 'error');
                 if (DEBUG_MODE) {
                     console.error("导出失败:", e);
                 }
-                notifyAndLog("导出失败，请查看控制台获取详情。", "导出错误", "error");
             }
         };
 
@@ -2106,24 +2499,30 @@
                 const file = e.target.files[0];
                 if (!file) return;
 
-                if (!window.confirm("您确定要导入该配置文件吗？这将覆盖您当前的所有设置，包括 API Key 、术语表、自定义翻译服务等。\n注意：此操作无法撤销。")) {
-                    return;
-                }
-
-                const reader = new FileReader();
-                reader.onload = async (event) => {
-                    try {
-                        const jsonData = JSON.parse(event.target.result);
-                        const result = await importAllData(jsonData, syncPanelState);
-                        notifyAndLog(result.message, result.success ? "导入成功" : "导入失败", result.success ? "info" : "error");
-                    } catch (err) {
-                        if (DEBUG_MODE) {
-                            console.error("导入失败:", err);
-                        }
-                        notifyAndLog(`导入失败：${err.message}`, "导入错误", "error");
-                    }
-                };
-                reader.readAsText(file);
+                showCustomConfirm("您确定要导入该配置文件吗？\n这将覆盖您当前的所有设置，包括 API Key 、术语表、自定义翻译服务等。\n注意：此操作无法撤销。")
+                    .then(() => {
+                        const reader = new FileReader();
+                        reader.onload = async (event) => {
+                            try {
+                                const jsonData = JSON.parse(event.target.result);
+                                const result = await importAllData(jsonData, syncPanelState);
+                                if (result.success) {
+                                    notifyAndLog(result.message, '导入成功');
+                                } else {
+                                    notifyAndLog(result.message, '导入失败', 'error');
+                                }
+                            } catch (err) {
+                                notifyAndLog(`导入失败: 文件格式无效或已损坏。 ${err.message}`, '导入失败', 'error');
+                                if (DEBUG_MODE) {
+                                    console.error("导入失败:", err);
+                                }
+                            }
+                        };
+                        reader.readAsText(file);
+                    })
+                    .catch(() => {
+                        notifyAndLog('导入操作已取消。', '操作取消');
+                    });
             };
             input.click();
         };
@@ -2156,6 +2555,20 @@
             if (rerenderMenuCallback) rerenderMenuCallback();
         };
 
+        const updateSwapButtonState = () => {
+            const isAutoDetect = fromLangSelect.value === 'auto';
+            swapLangBtn.disabled = isAutoDetect;
+        };
+
+        const handleLanguageChange = () => {
+            if (glossaryActionsSelect.value === 'ai_settings') {
+                const currentParam = aiParamSelect.value;
+                if (currentParam === 'system_prompt' || currentParam === 'user_prompt') {
+                    renderAiParamEditor();
+                }
+            }
+        };
+
         panel.addEventListener('change', (e) => {
             if (e.target.classList.contains('settings-control')) {
                 updateInputLabel(e.target);
@@ -2183,6 +2596,31 @@
                     delete el.dataset.state;
                 });
             }
+        });
+
+        swapLangBtn.addEventListener('click', () => {
+            if (swapLangBtn.disabled) return;
+            const fromLang = fromLangSelect.value;
+            const toLang = toLangSelect.value;
+            fromLangSelect.value = toLang;
+            toLangSelect.value = fromLang;
+            GM_setValue('from_lang', toLang);
+            GM_setValue('to_lang', fromLang);
+            fromLangSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            toLangSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        fromLangSelect.addEventListener('change', () => {
+            const newLang = fromLangSelect.value;
+            GM_setValue('from_lang', newLang);
+            updateSwapButtonState();
+            handleLanguageChange();
+        });
+
+        toLangSelect.addEventListener('change', () => {
+            const newLang = toLangSelect.value;
+            GM_setValue('to_lang', newLang);
+            handleLanguageChange();
         });
 
         engineSelect.addEventListener('change', () => {
@@ -2227,6 +2665,12 @@
             toggleEditableSection(null);
 
             switch (action) {
+                case 'ai_settings':
+                    toggleEditableSection(aiSettingsSection);
+                    const lastAiAction = GM_getValue(AI_PARAM_ACTION_KEY, 'system_prompt');
+                    aiParamSelect.value = lastAiAction;
+                    renderAiParamEditor();
+                    break;
                 case 'local':
                     glossaryLocalInput.value = GM_getValue(LOCAL_GLOSSARY_STRING_KEY, '');
                     toggleEditableSection(glossaryLocalSection);
@@ -2255,6 +2699,11 @@
             }
         });
 
+        aiParamSelect.addEventListener('change', () => {
+            GM_setValue(AI_PARAM_ACTION_KEY, aiParamSelect.value);
+            renderAiParamEditor();
+        });
+
         glossaryLocalSaveBtn.addEventListener('click', () => {
             GM_setValue(LOCAL_GLOSSARY_STRING_KEY, glossaryLocalInput.value);
             synchronizeAllSettings();
@@ -2269,6 +2718,7 @@
             const url = glossaryImportUrlInput.value.trim();
             if (url) {
                 importOnlineGlossary(url, () => {
+                    invalidateGlossaryCache();
                     if (glossaryActionsSelect.value === 'manage') {
                         populateManageGlossary();
                     }
@@ -2300,7 +2750,6 @@
                     GM_setValue(IMPORTED_GLOSSARY_KEY, allGlossaries);
                     GM_setValue(GLOSSARY_METADATA_KEY, allMetadata);
                     invalidateGlossaryCache();
-                    notifyAndLog(`已删除术语表: ${decodeURIComponent(urlToRemove.split('/').pop())}`);
                     populateManageGlossary();
                     updateInputLabel(glossaryManageSelect);
                 }
@@ -2315,7 +2764,7 @@
             synchronizeAllSettings();
         });
 
-        importDataBtn.addEventListener('click', () => handleImport(syncPanelState));
+        importDataBtn.addEventListener('click', () => handleImport());
         exportDataBtn.addEventListener('click', handleExport);
 
         closeBtn.addEventListener('click', togglePanel);
@@ -2355,6 +2804,9 @@
             if (panel.style.display !== 'block') {
                 return;
             }
+            if (document.getElementById('ao3-custom-confirm-overlay')) {
+                return;
+            }
             if (document.querySelector('.custom-dropdown-backdrop')) {
                 return;
             }
@@ -2365,6 +2817,24 @@
         };
         document.addEventListener('mousedown', handleClickOutside, true);
 
+        const populateLangSelects = () => {
+            const fromOptions = [{ value: 'auto', text: '自动检测' }, ...ALL_LANG_OPTIONS.map(([value, text]) => ({ value, text }))];
+            const toOptions = ALL_LANG_OPTIONS.map(([value, text]) => ({ value, text }));
+
+            const createOptions = (select, options) => {
+                select.innerHTML = '';
+                options.forEach(({ value, text }) => {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.textContent = text;
+                    select.appendChild(option);
+                });
+            };
+            createOptions(fromLangSelect, fromOptions);
+            createOptions(toLangSelect, toOptions);
+        };
+
+        populateLangSelects();
         populateEngineSelect();
         syncPanelState();
 
@@ -2656,8 +3126,8 @@
             modelGmKey: 'google_ai_model',
             modelMapping: {
                 'gemini-2.5-pro': 'Gemini 2.5 Pro',
-                'gemini-2.5-flash': 'Gemini 2.5 Flash',
-                'gemini-2.5-flash-lite': 'Gemini 2.5 Flash-Lite'
+                'gemini-flash-latest': 'Gemini 2.5 Flash',
+                'gemini-flash-lite-latest': 'Gemini 2.5 Flash-Lite'
             },
             requiresApiKey: true
         },
@@ -2665,8 +3135,9 @@
             displayName: 'Groq AI',
             modelGmKey: 'groq_model',
             modelMapping: {
-                'meta-llama/llama-4-maverick-17b-128e-instruct': 'Llama 4',
-                'moonshotai/kimi-k2-instruct': 'Kimi K2',
+                'meta-llama/llama-4-maverick-17b-128e-instruct': 'Llama 4 Maverick',
+                'meta-llama/llama-4-scout-17b-16e-instruct': 'Llama 4 Scout',
+                'moonshotai/kimi-k2-instruct-0905': 'Kimi K2',
                 'deepseek-r1-distill-llama-70b': 'DeepSeek 70B',
                 'openai/gpt-oss-120b': 'GPT-OSS 120B'
             },
@@ -2676,8 +3147,9 @@
             displayName: 'Together AI',
             modelGmKey: 'together_model',
             modelMapping: {
-                'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8': 'Llama 4',
+                'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8': 'Llama 4 Maverick',
                 'deepseek-ai/DeepSeek-V3': 'DeepSeek V3',
+                'moonshotai/Kimi-K2-Instruct': 'Kimi K2',
                 'Qwen/Qwen3-235B-A22B-Instruct-2507-tput': 'Qwen3 235B'
             },
             requiresApiKey: true
@@ -2686,7 +3158,8 @@
             displayName: 'Cerebras',
             modelGmKey: 'cerebras_model',
             modelMapping: {
-                'llama-4-maverick-17b-128e-instruct': 'Llama 4',
+                'llama-4-maverick-17b-128e-instruct': 'Llama 4 Maverick',
+                'llama-4-scout-17b-16e-instruct': 'Llama 4 Scout',
                 'qwen-3-235b-a22b-instruct-2507': 'Qwen 3 235B',
                 'gpt-oss-120b': 'GPT-OSS 120B'
             },
@@ -2696,9 +3169,9 @@
             displayName: 'ModelScope',
             modelGmKey: 'modelscope_model',
             modelMapping: {
-                'LLM-Research/Llama-4-Maverick-17B-128E-Instruct': 'Llama 4',
+                'LLM-Research/Llama-4-Maverick-17B-128E-Instruct': 'Llama 4 Maverick',
                 'deepseek-ai/DeepSeek-V3.1': 'DeepSeek V3.1',
-                'ZhipuAI/GLM-4.5': 'GLM 4.5',
+                'ZhipuAI/GLM-4.6': 'GLM 4.6',
                 'Qwen/Qwen3-235B-A22B-Instruct-2507': 'Qwen3 235B'
             },
             requiresApiKey: true
@@ -2780,7 +3253,7 @@
 
     /****************** API 客户端层 ******************/
 
-    /**
+	/**
      * 所有 API 客户端的基类，定义了标准接口和通用翻译流程
      */
     class BaseApiClient {
@@ -2801,7 +3274,7 @@
         /**
          * 构建请求所需的 Body
          */
-        _buildBody(_paragraphs) {
+        _buildBody(_paragraphs, _fromLang) {
             throw new Error("'_buildBody' must be implemented by subclasses.");
         }
 
@@ -2818,6 +3291,7 @@
         _handleError(response, responseData) {
             const apiErrorMessage = getNestedProperty(responseData, 'error.message') || getNestedProperty(responseData, 'message') || response.statusText || '未知错误';
             const error = new Error();
+            let userFriendlyError;
             error.noRetry = false;
 
             if (DEBUG_MODE) {
@@ -2830,40 +3304,40 @@
 
             switch (response.status) {
                 case 401:
-                    error.message = `API Key 无效或认证失败 (401)：请在设置面板中检查您的 ${this.provider.name} API Key。`;
+                    userFriendlyError = `API Key 无效或认证失败 (401)：请在设置面板中检查您的 ${this.provider.name} API Key。`;
                     error.noRetry = true;
                     break;
                 case 403:
-                    error.message = `权限被拒绝 (403)：您的 API Key 无权访问所请求的资源，或您所在的地区不受支持。`;
+                    userFriendlyError = `权限被拒绝 (403)：您的 API Key 无权访问所请求的资源，或您所在的地区不受支持。`;
                     error.noRetry = true;
                     break;
                 case 429:
-                    error.message = `请求频率过高 (429)：已超出 API 的速率限制，脚本将在稍后自动重试。`;
+                    userFriendlyError = `请求频率过高 (429)：已超出 API 的速率限制，脚本将在稍后自动重试。`;
                     error.type = 'rate_limit';
                     break;
                 case 500:
                 case 503:
-                    error.message = `服务器错误 (${response.status})：${this.provider.name} 的服务器暂时不可用，脚本将在稍后自动重试。`;
+                    userFriendlyError = `服务器错误 (${response.status})：${this.provider.name} 的服务器暂时不可用，脚本将在稍后自动重试。`;
                     error.type = 'server_overloaded';
                     break;
                 default:
-                    error.message = `发生未知 API 错误 (代码: ${response.status})。`;
+                    userFriendlyError = `发生未知 API 错误 (代码: ${response.status})。`;
                     error.noRetry = true;
                     break;
             }
 
-            error.message += `\n\n原始错误信息：\n${apiErrorMessage}`;
+            error.message = userFriendlyError + `\n\n原始错误信息：\n${apiErrorMessage}`;
             return error;
         }
 
-        /**
+		/**
          * 主翻译方法，执行完整的异步网络请求和响应处理流程
          */
-        translate(paragraphs) {
+        translate(paragraphs, fromLang = 'auto', toLang = 'zh-CN') {
             return new Promise(async (resolve, reject) => {
                 try {
                     const headers = await this._buildHeaders();
-                    const body = this._buildBody(paragraphs);
+                    const body = this._buildBody(paragraphs, fromLang, toLang);
                     const url = this.provider.apiHost;
 
                     if (!url) {
@@ -2930,7 +3404,7 @@
         }
     }
 
-    /**
+	/**
      * 用于处理所有 OpenAI 兼容 API 的客户端，包括大部分自定义服务
      */
     class OpenAICompatibleClient extends BaseApiClient {
@@ -2960,19 +3434,37 @@
             };
         }
 
-        _buildBody(paragraphs) {
+        _buildBody(paragraphs, fromLang, toLang) {
+            const fromLangName = LANG_CODE_TO_NAME[fromLang] || fromLang;
+            const toLangName = LANG_CODE_TO_NAME[toLang] || toLang;
+            const exampleOutput = generatePromptExample(toLang);
             const numberedText = paragraphs
                 .map((p, i) => `${i + 1}. ${p.innerHTML}`)
                 .join('\n\n');
 
+            const defaultSystemPrompt = getSharedSystemPrompt();
+            const systemPromptTemplate = GM_getValue('custom_ai_system_prompt', defaultSystemPrompt);
+            const userPromptTemplate = GM_getValue('custom_ai_user_prompt', `Translate the following numbered list to {toLangName}:\n\n{numberedText}`);
+
+            const finalSystemPrompt = systemPromptTemplate
+                .replace(/\{fromLangName\}/g, fromLangName)
+                .replace(/\{toLangName\}/g, toLangName)
+                .replace(/\{exampleOutput\}/g, exampleOutput);
+
+            const finalUserPrompt = userPromptTemplate
+                .replace(/\{toLangName\}/g, toLangName)
+                .replace(/\{numberedText\}/g, numberedText);
+
+            const temperature = GM_getValue('custom_ai_temperature', 0);
+
             const requestData = {
                 model: this.provider.selectedModel,
                 messages: [
-                    { "role": "system", "content": sharedSystemPrompt },
-                    { "role": "user", "content": `Translate the following numbered list to Simplified Chinese（简体中文）:\n\n${numberedText}` }
+                    { "role": "system", "content": finalSystemPrompt },
+                    { "role": "user", "content": finalUserPrompt }
                 ],
                 stream: false,
-                temperature: 0,
+                temperature: temperature,
             };
             return JSON.stringify(requestData);
         }
@@ -2999,16 +3491,17 @@
         /**
          * 覆盖基类的 translate 方法以添加详细的调试日志
          */
-        translate(paragraphs) {
+        translate(paragraphs, fromLang, toLang) {
             if (DEBUG_MODE) {
                 console.group(`[调试日志] OpenAICompatibleClient.translate 发起请求`);
                 console.log('服务 Provider:', this.provider);
                 console.log('请求 URL:', this.provider.apiHost);
                 console.log('请求模型:', this.provider.selectedModel);
+                console.log('检测到的源语言:', fromLang);
                 console.log('请求段落数:', paragraphs.length);
                 console.groupEnd();
             }
-            return super.translate(paragraphs);
+            return super.translate(paragraphs, fromLang, toLang);
         }
     }
 
@@ -3046,7 +3539,7 @@
         }
     };
 
-    /**
+	/**
      * 用于处理 Anthropic API 的专属客户端
      */
     class AnthropicClient extends BaseApiClient {
@@ -3080,22 +3573,40 @@
         /**
          * 构建完全符合 Anthropic API 规范的请求体
          */
-        _buildBody(paragraphs) {
+        _buildBody(paragraphs, fromLang, toLang) {
+            const fromLangName = LANG_CODE_TO_NAME[fromLang] || fromLang;
+            const toLangName = LANG_CODE_TO_NAME[toLang] || toLang;
+            const exampleOutput = generatePromptExample(toLang);
             const numberedText = paragraphs
                 .map((p, i) => `${i + 1}. ${p.innerHTML}`)
                 .join('\n\n');
 
+            const defaultSystemPrompt = getSharedSystemPrompt();
+            const systemPromptTemplate = GM_getValue('custom_ai_system_prompt', defaultSystemPrompt);
+            const userPromptTemplate = GM_getValue('custom_ai_user_prompt', `Translate the following numbered list to {toLangName}:\n\n{numberedText}`);
+
+            const finalSystemPrompt = systemPromptTemplate
+                .replace(/\{fromLangName\}/g, fromLangName)
+                .replace(/\{toLangName\}/g, toLangName)
+                .replace(/\{exampleOutput\}/g, exampleOutput);
+
+            const finalUserPrompt = userPromptTemplate
+                .replace(/\{toLangName\}/g, toLangName)
+                .replace(/\{numberedText\}/g, numberedText);
+
+            const temperature = GM_getValue('custom_ai_temperature', 0);
+
             const requestData = {
                 model: this.provider.selectedModel,
-                system: sharedSystemPrompt,
+                system: finalSystemPrompt,
                 max_tokens: 4096,
                 messages: [
                     {
                         "role": "user",
-                        "content": `Translate the following numbered list to Simplified Chinese（简体中文）:\n\n${numberedText}`
+                        "content": finalUserPrompt
                     }
                 ],
-                temperature: 0,
+                temperature: temperature,
             };
             return JSON.stringify(requestData);
         }
@@ -3136,24 +3647,40 @@
         /**
          * 构建符合 Gemini API 规范的请求体
          */
-        _buildBody(paragraphs) {
+        _buildBody(paragraphs, fromLang, toLang) {
+            const fromLangName = LANG_CODE_TO_NAME[fromLang] || fromLang;
+            const toLangName = LANG_CODE_TO_NAME[toLang] || toLang;
+            const exampleOutput = generatePromptExample(toLang);
             const numberedText = paragraphs
                 .map((p, i) => `${i + 1}. ${p.innerHTML}`)
                 .join('\n\n');
 
-            const userPrompt = `Translate the following numbered list to Simplified Chinese（简体中文）:\n\n${numberedText}`;
+            const defaultSystemPrompt = getSharedSystemPrompt();
+            const systemPromptTemplate = GM_getValue('custom_ai_system_prompt', defaultSystemPrompt);
+            const userPromptTemplate = GM_getValue('custom_ai_user_prompt', `Translate the following numbered list to {toLangName}:\n\n{numberedText}`);
+
+            const finalSystemPrompt = systemPromptTemplate
+                .replace(/\{fromLangName\}/g, fromLangName)
+                .replace(/\{toLangName\}/g, toLangName)
+                .replace(/\{exampleOutput\}/g, exampleOutput);
+
+            const finalUserPrompt = userPromptTemplate
+                .replace(/\{toLangName\}/g, toLangName)
+                .replace(/\{numberedText\}/g, numberedText);
+
+            const temperature = GM_getValue('custom_ai_temperature', 0);
 
             const requestData = {
                 systemInstruction: {
                     role: "user",
-                    parts: [{ text: sharedSystemPrompt }]
+                    parts: [{ text: finalSystemPrompt }]
                 },
                 contents: [{
                     role: "user",
-                    parts: [{ text: userPrompt }]
+                    parts: [{ text: finalUserPrompt }]
                 }],
                 generationConfig: {
-                    temperature: 0,
+                    temperature: temperature,
                     candidateCount: 1,
                 }
             };
@@ -3170,7 +3697,7 @@
         /**
          * 主翻译方法，处理 Google AI 特有的 URL 构建和认证逻辑
          */
-        translate(paragraphs) {
+        translate(paragraphs, fromLang, toLang) {
             return new Promise(async (resolve, reject) => {
                 try {
                     const { key: apiKey, index: keyIndex } = await _getApiKeyForService(this.provider);
@@ -3184,7 +3711,7 @@
 
                     const finalUrl = this.provider.apiHost.replace('{model}', modelId) + `?key=${apiKey}`;
                     const headers = this._buildHeaders();
-                    const body = this._buildBody(paragraphs);
+                    const body = this._buildBody(paragraphs, fromLang, toLang);
 
                     if (DEBUG_MODE) {
                         const maskedKey = apiKey.length > 8 ? `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}` : apiKey;
@@ -3192,6 +3719,7 @@
                         console.log('服务 Provider:', this.provider);
                         console.log('请求 URL:', finalUrl);
                         console.log(`使用 Key #${keyIndex + 1}: ${maskedKey}`);
+                        console.log('检测到的源语言:', fromLang);
                         console.log('请求 Headers:', headers);
                         try {
                             console.log('请求 Body (解析后):', JSON.parse(body));
@@ -3244,7 +3772,6 @@
                 }
             });
         }
-
     }
 
     /****************** 谷歌翻译模块 ******************/
@@ -3328,10 +3855,75 @@
 		return CONFIG.transEngine;
 	}
 
+	/**
+     * 使用百度翻译 API 检测文本语言
+     */
+    async function detectLanguageBaidu(text) {
+        if (DEBUG_MODE) {
+            console.log(`[语言检测] detectLanguageBaidu: 开始检测文本片段...`, { text: text.substring(0, 100) + '...' });
+        }
+        return new Promise((resolve) => {
+            if (!text || !text.trim()) {
+                if (DEBUG_MODE) {
+                    console.log(`[语言检测] detectLanguageBaidu: 文本为空，默认返回 'en'。`);
+                }
+                resolve('en');
+                return;
+            }
+
+            if (DEBUG_MODE) {
+                console.log(`[语言检测] detectLanguageBaidu: 正在向百度 API 发送语言检测请求...`);
+            }
+
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: 'https://fanyi.baidu.com/langdetect',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                data: `query=${encodeURIComponent(text)}`,
+                responseType: 'json',
+                timeout: 10000,
+                onload: function(response) {
+                    if (DEBUG_MODE) {
+                        console.log(`[语言检测] detectLanguageBaidu: 收到百度 API 响应。`, { status: response.status, response: response.response });
+                    }
+                    if (response.status === 200 && response.response && response.response.error === 0) {
+                        const lang = response.response.lan;
+                        if (DEBUG_MODE) {
+                            console.log(`[语言检测] detectLanguageBaidu: 成功检测到语言 -> ${lang}`);
+                        }
+                        resolve(lang);
+                    } else {
+                        console.error('百度语言检测失败:', response.response ? response.response.msg : '请求失败');
+                        if (DEBUG_MODE) {
+                            console.log(`[语言检测] detectLanguageBaidu: 检测失败，默认返回 'en'。`);
+                        }
+                        resolve('en');
+                    }
+                },
+                onerror: function(error) {
+                    console.error('百度语言检测网络错误:', error);
+                    if (DEBUG_MODE) {
+                        console.log(`[语言检测] detectLanguageBaidu: 网络错误，默认返回 'en'。`);
+                    }
+                    resolve('en');
+                },
+                ontimeout: function() {
+                    console.error('百度语言检测请求超时。');
+                    if (DEBUG_MODE) {
+                        console.log(`[语言检测] detectLanguageBaidu: 请求超时，默认返回 'en'。`);
+                    }
+                    resolve('en');
+                }
+            });
+        });
+    }
+
     /**
      * 远程翻译请求函数
      */
-    async function requestRemoteTranslation(paragraphs, { retryCount = 0, maxRetries = 5, isCancelled = () => false } = {}) {
+    async function requestRemoteTranslation(paragraphs, { retryCount = 0, maxRetries = 5, isCancelled = () => false, knownFromLang = null } = {}) {
         const createCancellationError = () => {
             const error = new Error('用户已取消翻译。');
             error.type = 'user_cancelled';
@@ -3344,13 +3936,43 @@
             throw createCancellationError();
         }
 
-        if (DEBUG_MODE) console.log(`[网络层] requestRemoteTranslation 开始执行 (尝试 #${retryCount + 1})。isCancelled 初始状态: ${isCancelled()}`);
+        if (DEBUG_MODE) {
+            console.log(`[网络层] requestRemoteTranslation 开始执行 (尝试 #${retryCount + 1})。`);
+        }
 
         const engineName = getValidEngineName();
+        const toLang = GM_getValue('to_lang', 'zh-CN');
+        let fromLang;
+
+        if (knownFromLang) {
+            fromLang = knownFromLang;
+            if (DEBUG_MODE) {
+                console.log(`[网络层] 使用已知的源语言: '${fromLang}'，跳过自动检测。`);
+            }
+        } else {
+            const userSelectedFromLang = GM_getValue('from_lang', 'auto');
+            if (userSelectedFromLang === 'auto') {
+                if (DEBUG_MODE) {
+                    console.log(`[网络层] 用户设置为自动检测，开始执行语言检测...`);
+                }
+                const textToDetect = paragraphs.map(p => p.textContent).join(' ').substring(0, 200);
+                fromLang = await detectLanguageBaidu(textToDetect);
+            } else {
+                fromLang = userSelectedFromLang;
+                if (DEBUG_MODE) {
+                    console.log(`[网络层] 用户已手动选择源语言: '${fromLang}'，跳过自动检测。`);
+                }
+            }
+        }
+
+        if (isCancelled()) {
+            if (DEBUG_MODE) console.log('[网络层] 语言检测/设置读取后检测到取消信号，中止翻译。');
+            throw createCancellationError();
+        }
 
         if (engineName === 'google_translate') {
             try {
-                const translatedHtmlSnippets = await _handleGoogleRequest(CONFIG.TRANS_ENGINES.google_translate, paragraphs);
+                const translatedHtmlSnippets = await _handleGoogleRequest(CONFIG.TRANS_ENGINES.google_translate, paragraphs, fromLang, toLang);
                 if (!Array.isArray(translatedHtmlSnippets)) {
                     throw new Error('谷歌翻译接口未返回预期的数组格式');
                 }
@@ -3375,7 +3997,7 @@
             }
 
             const client = ApiClientFactory.create(provider);
-            const translatedText = await client.translate(paragraphs);
+            const translatedText = await client.translate(paragraphs, fromLang, toLang);
 
             if (typeof translatedText !== 'string' || !translatedText.trim()) {
                 throw new Error('API 未返回有效文本。');
@@ -3414,7 +4036,7 @@
                     if (DEBUG_MODE) console.log('[网络层] 等待后检测到取消信号，中止重试。');
                     throw createCancellationError();
                 }
-                return await requestRemoteTranslation(paragraphs, { retryCount: retryCount + 1, maxRetries, isCancelled });
+                return await requestRemoteTranslation(paragraphs, { retryCount: retryCount + 1, maxRetries, isCancelled, knownFromLang });
             }
             throw error;
         }
@@ -3473,16 +4095,17 @@
             GM_setValue(indexKey, (startIndex + 1) % keys.length);
 
             const currentKey = keys[currentIndex];
+            console.log(`[API Key 调度] 正在为“${provider.name}”服务使用 Key #${currentIndex + 1}`);
             return { key: currentKey, index: currentIndex };
         } finally {
             releaseLock();
         }
     }
 
-    /**
+	/**
      * 处理对谷歌翻译接口的特定请求流程
      */
-    async function _handleGoogleRequest(engineConfig, paragraphs) {
+    async function _handleGoogleRequest(engineConfig, paragraphs, fromLang, toLang) {
         await GoogleTranslateHelper .findAuth();
         if (!GoogleTranslateHelper .translateAuth) {
             throw new Error('无法获取谷歌翻译的授权凭证');
@@ -3492,7 +4115,20 @@
             ...engineConfig.headers,
             'X-goog-api-key': GoogleTranslateHelper .translateAuth
         };
-        const requestData = engineConfig.getRequestData(paragraphs);
+
+        const sourceTexts = paragraphs.map(p => p.outerHTML);
+        const requestData = JSON.stringify([
+            [sourceTexts, fromLang, toLang], "te"
+        ]);
+
+        if (DEBUG_MODE) {
+            console.groupCollapsed(`[调试日志] _handleGoogleRequest 准备发送请求`);
+            console.log('请求 URL:', engineConfig.url_api);
+            console.log('检测到的源语言:', fromLang);
+            console.log('目标语言:', toLang);
+            console.log('请求段落数:', paragraphs.length);
+            console.groupEnd();
+        }
 
         const res = await new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
@@ -3640,7 +4276,7 @@
         return error;
     }
 
-    /**
+	/**
      * Zhipu AI 的专属错误处理策略
      */
     function _handleZhipuAiError(res, name, responseData) {
@@ -3673,9 +4309,8 @@
                     break;
                 case '1302':
                 case '1303':
-                    userFriendlyError = `请求频率过高 (${businessErrorCode})：已超出 API 的速率限制，脚本将在稍后自动重试。`;
-                    error.type = 'rate_limit';
-                    break;
+                    error.message = `请求频率过高 (${businessErrorCode})：已超出 API 的速率限制，脚本将在稍后自动重试。\n\n原始错误信息：\n${apiErrorMessage}`;
+                    return error;
                 case '1304':
                     userFriendlyError = `调用次数超限 (${businessErrorCode})：已达到当日调用次数限额，请联系 Zhipu AI 客服。`;
                     error.noRetry = true;
@@ -4395,7 +5030,7 @@
     /**
      * 段落翻译函数，集成了术语表、禁翻和后处理替换逻辑
      */
-    async function translateParagraphs(paragraphs, { maxRetries = 3, isCancelled = () => false } = {}) {
+    async function translateParagraphs(paragraphs, { maxRetries = 3, isCancelled = () => false, knownFromLang = null } = {}) {
         const createCancellationError = () => {
             const error = new Error('用户已取消翻译。');
             error.type = 'user_cancelled';
@@ -4459,7 +5094,7 @@
                     legalPlaceholders.add(key);
                 }
 
-                const combinedTranslation = await requestRemoteTranslation(preprocessedParagraphs, { retryCount: 0, maxRetries: 3, isCancelled });
+                const combinedTranslation = await requestRemoteTranslation(preprocessedParagraphs, { retryCount: 0, maxRetries: 3, isCancelled, knownFromLang });
 
                 lastTranslationAttempt = combinedTranslation;
                 lastPlaceholdersMap = placeholders;
@@ -4589,7 +5224,7 @@
                             if (DEBUG_MODE) console.log('逐段回退时检测到取消信号，中断回退。');
                             break;
                         }
-                        const singleResultMap = await translateParagraphs([p], { maxRetries: 0, isCancelled });
+                        const singleResultMap = await translateParagraphs([p], { maxRetries: 0, isCancelled, knownFromLang });
                         const singleResult = singleResultMap.get(p);
                         fallbackResults.set(p, singleResult || { status: 'error', content: '逐段翻译失败' });
                     }
@@ -4625,7 +5260,7 @@
         }
     }
 
-    /**
+	/**
      * 创建并返回一个独立的翻译任务控制实例
      */
     function createTranslationController(options) {
@@ -4633,13 +5268,8 @@
 
         const controller = {
             state: 'idle',
-            observer: null,
+            translationTask: null,
             isCancellationRequested: false,
-
-            instanceState: {
-                elementState: new WeakMap(),
-                isFirstTranslationChunk: true,
-            },
 
             updateButtonState: function(text, stateClass = '') {
                 if (buttonWrapper) {
@@ -4669,8 +5299,13 @@
                     }
                 };
 
+                const instanceState = {
+                    elementState: new WeakMap(),
+                    isFirstTranslationChunk: true,
+                };
+
                 if (isLazyLoad) {
-                    this.observer = runTranslationEngineWithObserver({
+                    this.translationTask = runTranslationEngineWithObserver({
                         containerElement: containerElement,
                         isCancelled: () => this.isCancellationRequested,
                         onProgress: (translated, total) => {
@@ -4679,7 +5314,7 @@
                             }
                         },
                         onComplete: onComplete,
-                        instanceState: this.instanceState
+                        instanceState: instanceState
                     });
                 } else {
                     runTranslationEngineForBlock(containerElement, () => this.isCancellationRequested, onComplete);
@@ -4691,9 +5326,9 @@
 
                 this.isCancellationRequested = true;
                 if (DEBUG_MODE) console.log('[UI控制] pause: 用户请求暂停，isCancellationRequested 设置为 true。');
-                if (this.observer) {
-                    this.observer.disconnect();
-                    this.observer = null;
+                if (this.translationTask && this.translationTask.cleanup) {
+                    this.translationTask.cleanup();
+                    this.translationTask = null;
                 }
                 
                 this.state = 'paused';
@@ -4709,9 +5344,9 @@
             clear: function() {
                 this.isCancellationRequested = true;
                 if (DEBUG_MODE) console.log('[UI控制] clear: 用户请求清除，isCancellationRequested 设置为 true。');
-                if (this.observer) {
-                    this.observer.disconnect();
-                    this.observer = null;
+                if (this.translationTask && this.translationTask.cleanup) {
+                    this.translationTask.cleanup();
+                    this.translationTask = null;
                 }
 
                 const translationNodes = containerElement.querySelectorAll('.translated-by-ao3-script, .translated-by-ao3-script-error');
@@ -4721,9 +5356,6 @@
                     unit.style.display = '';
                     delete unit.dataset.translationState;
                 });
-
-                this.instanceState.elementState = new WeakMap();
-                this.instanceState.isFirstTranslationChunk = true;
                 
                 this.state = 'idle';
                 this.updateButtonState(originalButtonText, 'state-idle');
@@ -4750,7 +5382,7 @@
         return controller;
     }
 
-    /**
+	/**
      * 翻译引擎（用于简介、注释、评论等区域）
      */
     async function runTranslationEngineForBlock(containerElement, isCancelled, onComplete) {
@@ -4776,57 +5408,65 @@
 
         units.forEach(unit => unit.dataset.translationState = 'translating');
 
-        let translationResults;
         try {
-            translationResults = await translateParagraphs(units, { isCancelled });
-        } catch (error) {
-            if (error.type === 'user_cancelled') {
+            const translationResults = await translateParagraphs(units, { isCancelled });
+
+            if (isCancelled()) {
                 units.forEach(unit => delete unit.dataset.translationState);
                 return;
             }
-            translationResults = new Map();
+
+            const currentMode = GM_getValue('translation_display_mode', 'bilingual');
+
             units.forEach(unit => {
-                translationResults.set(unit, { status: 'error', content: error.message || '未知错误' });
-            });
-        }
+                const result = translationResults.get(unit);
+                if (result) {
+                    const transNode = document.createElement('div');
+                    const newTranslatedElement = unit.cloneNode(false);
+                    newTranslatedElement.innerHTML = result.content;
 
-        if (isCancelled()) {
-            units.forEach(unit => delete unit.dataset.translationState);
-            return;
-        }
-
-        const currentMode = GM_getValue('translation_display_mode', 'bilingual');
-
-        units.forEach(unit => {
-            const result = translationResults.get(unit);
-            if (result) {
-                const transNode = document.createElement('div');
-                const newTranslatedElement = unit.cloneNode(false);
-                newTranslatedElement.innerHTML = result.content;
-
-                if (result.status === 'success') {
-                    transNode.className = 'translated-by-ao3-script';
-                    unit.dataset.translationState = 'translated';
-                    if (currentMode === 'translation_only') {
-                        unit.style.display = 'none';
+                    if (result.status === 'success') {
+                        transNode.className = 'translated-by-ao3-script';
+                        unit.dataset.translationState = 'translated';
+                        if (currentMode === 'translation_only') {
+                            unit.style.display = 'none';
+                        }
+                    } else {
+                        transNode.className = 'translated-by-ao3-script-error';
+                        newTranslatedElement.innerHTML = `翻译失败：${result.content.replace('翻译失败：', '')}`;
+                        unit.dataset.translationState = 'error';
                     }
+                    transNode.appendChild(newTranslatedElement);
+                    transNode.style.cssText = 'margin-top: 0.25em; margin-bottom: 1em;';
+                    unit.after(transNode);
                 } else {
-                    transNode.className = 'translated-by-ao3-script-error';
-                    newTranslatedElement.innerHTML = `翻译失败：${result.content.replace('翻译失败：', '')}`;
                     unit.dataset.translationState = 'error';
                 }
+            });
+
+            if (onComplete) onComplete();
+        } catch (error) {
+            if (isCancelled() || (error && error.type === 'user_cancelled')) {
+                units.forEach(unit => delete unit.dataset.translationState);
+                return;
+            }
+
+            units.forEach(unit => {
+                const transNode = document.createElement('div');
+                transNode.className = 'translated-by-ao3-script-error';
+                const newTranslatedElement = unit.cloneNode(false);
+                newTranslatedElement.innerHTML = `翻译失败：${error.message || '未知错误'}`;
                 transNode.appendChild(newTranslatedElement);
                 transNode.style.cssText = 'margin-top: 0.25em; margin-bottom: 1em;';
                 unit.after(transNode);
-            } else {
                 unit.dataset.translationState = 'error';
-            }
-        });
+            });
 
-        if (onComplete) onComplete();
+            if (onComplete) onComplete();
+        }
     }
 
-    /**
+	/**
      * 翻译引擎（懒加载模式）
      */
     function runTranslationEngineWithObserver(options) {
@@ -4836,6 +5476,26 @@
         const translationQueue = new Set();
         let scheduleTimeout = null;
         let flushTimeout = null;
+        let detectedLanguageForSession = null;
+
+        async function initializeLanguageDetection() {
+            const userSelectedFromLang = GM_getValue('from_lang', 'auto');
+            if (userSelectedFromLang === 'auto') {
+                const firstFewUnits = allUnits.slice(0, 5);
+                if (firstFewUnits.length > 0) {
+                    const textToDetect = firstFewUnits.map(p => p.textContent).join(' ').substring(0, 200);
+                    detectedLanguageForSession = await detectLanguageBaidu(textToDetect);
+                    if (DEBUG_MODE) {
+                        console.log(`[懒加载引擎] 任务初始化：自动检测到源语言为 '${detectedLanguageForSession}'。`);
+                    }
+                }
+            } else {
+                detectedLanguageForSession = userSelectedFromLang;
+                if (DEBUG_MODE) {
+                    console.log(`[懒加载引擎] 任务初始化：用户已设置源语言为 '${detectedLanguageForSession}'。`);
+                }
+            }
+        }
 
         function preProcessAndGetUnits(container) {
             const brSplitSelectors = 'p, blockquote';
@@ -4896,6 +5556,8 @@
             return null;
         }
 
+        initializeLanguageDetection();
+
         const isInViewport = (el) => {
             const rect = el.getBoundingClientRect();
             return (rect.top < window.innerHeight && rect.bottom >= 0);
@@ -4917,19 +5579,24 @@
             const offscreenInQueue = allQueuedUnits.filter(p => !visibleInQueue.includes(p));
             const prioritizedUnits = [...visibleInQueue, ...offscreenInQueue];
 
-            const runType = instanceState.isFirstTranslationChunk ? 'first' : 'subsequent';
             const engineName = getValidEngineName();
-            const modelId = getCurrentModelId(engineName);
-            let paragraphLimit = CONFIG[runType === 'first' ? 'PARAGRAPH_LIMIT' : 'SUBSEQUENT_PARAGRAPH_LIMIT'];
-            let chunkSize = CONFIG[runType === 'first' ? 'CHUNK_SIZE' : 'SUBSEQUENT_CHUNK_SIZE'];
-            const priorityKeys = [modelId, engineName].filter(Boolean);
-            for (const key of priorityKeys) {
-                const specificLimits = getNestedProperty(CONFIG.MODEL_SPECIFIC_LIMITS, `${key}.${runType}`);
-                if (specificLimits) {
-                    paragraphLimit = specificLimits.PARAGRAPH_LIMIT || paragraphLimit;
-                    chunkSize = specificLimits.CHUNK_SIZE || chunkSize;
-                    break;
-                }
+            let paragraphLimit, chunkSize;
+
+            if (engineName === 'google_translate') {
+                const googleLimits = CONFIG.MODEL_SPECIFIC_LIMITS.google_translate;
+                paragraphLimit = googleLimits.PARAGRAPH_LIMIT;
+                chunkSize = googleLimits.CHUNK_SIZE;
+            } else {
+                chunkSize = GM_getValue('custom_ai_chunk_size', CONFIG.CHUNK_SIZE);
+                paragraphLimit = GM_getValue('custom_ai_para_limit', CONFIG.PARAGRAPH_LIMIT);
+            }
+
+            if (DEBUG_MODE) {
+                console.groupCollapsed(`[调试日志] 懒加载引擎参数`);
+                console.log(`翻译服务: ${engineName}`);
+                console.log(`段落数限制: ${paragraphLimit}`);
+                console.log(`文本量限制: ${chunkSize}`);
+                console.groupEnd();
             }
 
             let currentChars = 0;
@@ -4958,7 +5625,6 @@
             if (chunkToSend.length === 0) return;
 
             isProcessing = true;
-            if (instanceState.isFirstTranslationChunk) instanceState.isFirstTranslationChunk = false;
             chunkToSend.forEach(p => {
                 translationQueue.delete(p);
                 p.dataset.translationState = 'translating';
@@ -4972,7 +5638,7 @@
                 const paragraphsToTranslate = chunkToSend.filter(p => p.tagName !== 'HR' && p.textContent.trim().length > 0);
                 let translationResults;
                 try {
-                    translationResults = paragraphsToTranslate.length > 0 ? await translateParagraphs(paragraphsToTranslate, { isCancelled }) : new Map();
+                    translationResults = paragraphsToTranslate.length > 0 ? await translateParagraphs(paragraphsToTranslate, { isCancelled, knownFromLang: detectedLanguageForSession }) : new Map();
                 } catch (error) {
                     if (error.type === 'user_cancelled') {
                         if (DEBUG_MODE) console.log('[懒加载引擎] processQueue 捕获到用户取消错误，提前返回。');
@@ -5049,16 +5715,17 @@
             scheduleTimeout = setTimeout(() => processQueue(force), 300);
         };
 
-        let effectiveRootMargin = CONFIG.LAZY_LOAD_ROOT_MARGIN;
+        let effectiveRootMargin;
         const engineName = getValidEngineName();
-        const modelId = getCurrentModelId(engineName);
-        const priorityKeys = [modelId, engineName].filter(Boolean);
-        for (const key of priorityKeys) {
-            const specificMargin = getNestedProperty(CONFIG.MODEL_SPECIFIC_LIMITS, `${key}.LAZY_LOAD_ROOT_MARGIN`);
-            if (specificMargin) {
-                effectiveRootMargin = specificMargin;
-                break;
-            }
+        if (engineName === 'google_translate') {
+            const googleLimits = CONFIG.MODEL_SPECIFIC_LIMITS.google_translate;
+            effectiveRootMargin = googleLimits.LAZY_LOAD_ROOT_MARGIN;
+        } else {
+            effectiveRootMargin = GM_getValue('custom_ai_lazy_load_margin', CONFIG.LAZY_LOAD_ROOT_MARGIN);
+        }
+
+        if (DEBUG_MODE) {
+            console.log(`[调试日志] 懒加载引擎 IntersectionObserver 使用的 rootMargin: "${effectiveRootMargin}"`);
         }
 
         const observer = new IntersectionObserver((entries) => {
@@ -6132,6 +6799,21 @@
                 GM_setValue('google_ai_keys_string', newKeysString);
             }
         })();
+
+        (function() {
+            const modelKey = 'google_ai_model';
+            const currentModel = GM_getValue(modelKey, null);
+            if (!currentModel) return;
+
+            const migrationMap = {
+                'gemini-2.5-flash': 'gemini-flash-latest',
+                'gemini-2.5-flash-lite': 'gemini-flash-lite-latest'
+            };
+
+            if (migrationMap[currentModel]) {
+                GM_setValue(modelKey, migrationMap[currentModel]);
+            }
+        })();
     }
 
     /**
@@ -6410,6 +7092,10 @@
         if (pageType === 'tags_search') {
             translateTagSearchTips();
         }
+
+        if (pageType === 'users_stats') {
+            translateStatsChart();
+        }
     }
 
     /**
@@ -6584,6 +7270,8 @@
                     if (p2 && (p3 === 'blocked' || p3 === 'muted') && p4 === 'users') return 'users_block_mute_list';
                     if (p2 && p3 === 'dashboard') return 'dashboard';
                     if (p2 && p3 === 'profile') return 'profile';
+                    if (p2 && p3 === 'stats') return 'users_stats';
+                    if (p2 && p3 === 'readings') return 'users_history';
                     if (p2 && p3 === 'preferences') return 'preferences';
                     if (p2 && p3 === 'edit') return 'users_settings';
                     if (p2 && p3 === 'change_username') return 'users_settings';
@@ -6614,7 +7302,13 @@
                     break;
                 case 'works':
                     if (document.querySelector('div#main.works-update')) return 'works_edit';
-                    if (p2 === 'new') return 'works_new';
+                    if (p2 === 'new') {
+                        const searchParams = new URLSearchParams(window.location.search);
+                        if (searchParams.get('import') === 'true') {
+                            return 'works_import';
+                        }
+                        return 'works_new';
+                    }
                     if (p2 === 'search') return isSearchResultsPage ? 'works_search_results' : 'works_search';
                     if (p2 && /^\d+$/.test(p2)) {
                         if (p3 === 'chapters' && p4 === 'new') return 'chapters_new';
@@ -6925,25 +7619,35 @@
         };
 
 		const pageTranslationConfig = {
+			'front_page': [
+                { selector: '.latest.news .post.group > blockquote.userstuff', text: '翻译概述', above: false, isLazyLoad: false }
+            ],
 			'works_show': [
 				{ selector: 'div.summary blockquote.userstuff', text: '翻译简介', above: false, isLazyLoad: false },
 				{ selector: 'div.notes blockquote.userstuff', text: '翻译注释', above: false, isLazyLoad: false },
-				{ selector: '#chapters .userstuff', text: '翻译正文', above: true, isLazyLoad: true },
-				{ selector: 'li.comment blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
+				{ selector: '#chapters > .userstuff', text: '翻译正文', above: true, isLazyLoad: true },
+				{ selector: '#chapters > .chapter > .userstuff[role="article"]', text: '翻译正文', above: true, isLazyLoad: true },
+				{ selector: 'li.comment > div > blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
 			],
 			'works_chapters_show': [
 				{ selector: 'div.summary blockquote.userstuff', text: '翻译简介', above: false, isLazyLoad: false },
 				{ selector: 'div.notes blockquote.userstuff', text: '翻译注释', above: false, isLazyLoad: false },
-				{ selector: '#chapters .userstuff', text: '翻译正文', above: true, isLazyLoad: true },
-				{ selector: 'li.comment blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
+				{ selector: '#chapters > .userstuff', text: '翻译正文', above: true, isLazyLoad: true },
+				{ selector: '#chapters > .chapter > .userstuff[role="article"]', text: '翻译正文', above: true, isLazyLoad: true },
+				{ selector: 'li.comment > div > blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
 			],
 			'admin_posts_show': [
-                { selector: '.admin_posts-show div[role="article"] .userstuff', text: '翻译动态', above: true, isLazyLoad: false },
-				{ selector: '.comment blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
+                { selector: 'div[role="article"] > .userstuff', text: '翻译动态', above: true, isLazyLoad: false },
+				{ selector: '.comment > div > blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
 			],
             'admin_posts_index': [
-                { selector: '.admin_posts-index div[role="article"] .userstuff', text: '翻译动态', above: true, isLazyLoad: false }
+                { selector: '.admin_posts-index div[role="article"] > .userstuff', text: '翻译动态', above: true, isLazyLoad: false }
             ],
+            'dashboard': [
+                { selector: '.latest.news .post.group > blockquote.userstuff', text: '翻译概述', above: false, isLazyLoad: false },
+                { selector: '.random.readings .reading.work.blurb .userstuff.summary', text: '翻译简介', above: false, isLazyLoad: false }
+            ],
+            'users_history': [blurbSummaryConfig],
             'works_index': [blurbSummaryConfig],
             'users_works_index': [blurbSummaryConfig],
             'tags_show': [blurbSummaryConfig],
@@ -6976,8 +7680,8 @@
             } else {
                 document.querySelectorAll(target.selector).forEach(element => {
                     if (element.dataset.translationHandled) return;
-                    if (pageConfig.currentPageType === 'works_show' && target.selector === '#chapters .userstuff' && element.closest('.notes, .end.notes, .bookmark, .summary')) return;
-                    if (pageConfig.currentPageType === 'works_chapters_show' && target.selector === '#chapters .userstuff' && element.closest('.notes, .end.notes, .bookmark, .summary')) return;
+                    const isWorkTextSelector = target.selector.startsWith('#chapters');
+                    if (isWorkTextSelector && element.closest('.notes, .end.notes, .bookmark, .summary')) return;
                     if (element.textContent.trim() !== '') {
                         addTranslationButton(element, target.text, target.above, target.isLazyLoad);
                     }
