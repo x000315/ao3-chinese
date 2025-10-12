@@ -13556,18 +13556,18 @@ Your task is to translate a numbered list of text segments provided by the user.
 				{ selector: 'div.notes blockquote.userstuff', text: '翻译注释', above: false, isLazyLoad: false },
 				{ selector: '#chapters > .userstuff', text: '翻译正文', above: true, isLazyLoad: true },
 				{ selector: '#chapters > .chapter > .userstuff[role="article"]', text: '翻译正文', above: true, isLazyLoad: true },
-				{ selector: 'li.comment > div > blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
+				{ selector: 'li.comment > blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
 			],
 			'works_chapters_show': [
 				{ selector: 'div.summary blockquote.userstuff', text: '翻译简介', above: false, isLazyLoad: false },
 				{ selector: 'div.notes blockquote.userstuff', text: '翻译注释', above: false, isLazyLoad: false },
 				{ selector: '#chapters > .userstuff', text: '翻译正文', above: true, isLazyLoad: true },
 				{ selector: '#chapters > .chapter > .userstuff[role="article"]', text: '翻译正文', above: true, isLazyLoad: true },
-				{ selector: 'li.comment > div > blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
+				{ selector: 'li.comment > blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
 			],
 			'admin_posts_show': [
                 { selector: 'div[role="article"] > .userstuff', text: '翻译动态', above: true, isLazyLoad: false },
-				{ selector: '.comment > div > blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
+				{ selector: 'li.comment > blockquote.userstuff', text: '翻译评论', above: false, isLazyLoad: false }
 			],
             'admin_posts_index': [
                 { selector: '.admin_posts-index div[role="article"] > .userstuff', text: '翻译动态', above: true, isLazyLoad: false }
