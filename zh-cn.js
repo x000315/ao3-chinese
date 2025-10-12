@@ -1,7 +1,7 @@
 /**
  name         AO3 汉化插件 - 词库
  namespace    https://github.com/V-Lipset/ao3-chinese
- version      1.5.4-2025-09-29
+ version      1.5.5-2025-10-12
  description  AO3 汉化插件的词库文件
  author       V-Lipset
  license      GPL-3.0
@@ -497,6 +497,7 @@ const I18N = {
                 'Filter by title or name': '按标题或名称筛选',
                 'Filter by fandom': '按同人圈筛选',
                 'Closed': '已截止',
+                    'Multifandom': '跨圈',
                 'Yes': '是',
                 'No': '否',
                 'Either': '皆可',
@@ -629,7 +630,7 @@ const I18N = {
                     'Are you sure you want to delete this work? This will destroy all comments and kudos on this work as well and CANNOT BE UNDONE!': '您确定要删除这篇作品吗？此操作将一并删除该作品收到的所有评论和点赞，且无法撤销！',
                     'Chapter has been posted!': '章节已成功发布！',
                     'Chapter was successfully updated.': '章节已成功更新。',
-                    'Are you sure?': '你确定吗？',
+                    'Are you sure?': '您确定吗？',
                     'The chapter was successfully deleted.': '已成功删除此章节。',
                     'Chapter order has been successfully updated.': '章节顺序已成功更新。',
                     'This is a draft chapter in a posted work. It will be kept unless the work is deleted.': '这是已发布作品中的一篇草稿章节。除非作品被删除，否则该草稿将一直保留。',
@@ -638,6 +639,18 @@ const I18N = {
 				'This is part of an ongoing challenge and will be revealed soon!': '本作品正在参与一项开放中的挑战，内容将很快揭晓！',
 				'Your search failed because of a syntax error. Please try again.': '搜索失败，您的查询存在语法错误。请修改后重试。',
 				'Type or paste formatted text.': '输入或粘贴带有格式的文本',
+				'Comment created!': '评论已发布！',
+				'Are you sure you want to delete this comment?': '您确定要删除这条评论吗？',
+				'Yes, delete!': '是的，删除！',
+				'Comment deleted.': '评论已删除。',
+				'(Previous comment deleted.)': '（原评论已删除）',
+				'Freeze Thread': '锁定评论串',
+				'Comment thread successfully frozen!': '已成功锁定评论串！',
+				'Unfreeze Thread': '解锁评论串',
+				'Comment thread successfully unfrozen!': '已成功解锁评论串！',
+				'Frozen': '已锁定',
+				'Comment was successfully updated.': '评论已成功更新。',
+
 
                     // 标签说明
                     'This tag indicates adult content.': '此标签涉及成人内容。',
@@ -994,6 +1007,11 @@ const I18N = {
                     /<li>(.+?) does not accept gifts\.<\/li>/g,
                     (_match, username) => `<li>${username} 不接受赠文。</li>`
                 ],
+				[
+					'div.flash.error',
+					/^We couldn't add your submission to the following collection\(s\): <br><ul><li>(.*?), because this item has already been submitted\.<\/li><\/ul>$/s,
+					'我们无法将您的提交添加到以下合集：<br><ul><li>$1，因为该项目已被提交。</li></ul>'
+				],
 
                     // 标签说明
                     [
@@ -1117,7 +1135,7 @@ const I18N = {
             'F/M': '女/男',
             'Gen': '无CP',
             'M/M': '男/男',
-            'Multi-Fandom': '多配对-同人圈',
+            'Multi-Fandom': '跨圈',
             'Original Work': '原创作品',
             'Multi': '多配对',
             'Choose Not To Use Archive Warnings': '不使用 Archive 预警',
@@ -1663,7 +1681,7 @@ const I18N = {
             ],
             'selector': []
         },
-        'users_works_index': { // 用户作品列表页
+        'users_works_index': {
             'static': {},
             'innerHTML_regexp': [],
             'regexp': [
@@ -1671,8 +1689,7 @@ const I18N = {
             ],
             'selector': [],
         },
-
-        'users_drafts_index': { // 用户草稿列表页
+        'users_drafts_index': {
             'static': {},
             'innerHTML_regexp': [],
             'regexp': [
@@ -1680,8 +1697,7 @@ const I18N = {
             ],
             'selector': [],
         },
-
-        'users_series_index': { // 用户系列列表页
+        'users_series_index': {
             'static': {},
             'innerHTML_regexp': [],
             'regexp': [
@@ -1689,8 +1705,7 @@ const I18N = {
             ],
             'selector': [],
         },
-
-        'users_bookmarks_index': { // 用户书签列表页
+        'users_bookmarks_index': {
             'static': {},
             'innerHTML_regexp': [],
             'regexp': [
@@ -1698,8 +1713,7 @@ const I18N = {
             ],
             'selector': [],
         },
-
-        'users_collections_index': { // 用户合集列表页
+        'users_collections_index': {
             'static': {},
             'innerHTML_regexp': [],
             'regexp': [
@@ -1708,8 +1722,7 @@ const I18N = {
             ],
             'selector': [],
         },
-
-        'users_subscriptions_index': { // 用户订阅列表页
+        'users_subscriptions_index': {
             'static': {},
             'innerHTML_regexp': [],
             'regexp': [
@@ -1717,8 +1730,7 @@ const I18N = {
             ],
             'selector': [],
         },
-
-        'users_related_works_index': { // 用户相关作品列表页
+        'users_related_works_index': {
             'static': {},
             'innerHTML_regexp': [],
             'regexp': [
@@ -1726,8 +1738,7 @@ const I18N = {
             ],
             'selector': [],
         },
-
-        'users_gifts_index': { // 用户相关作品列表页
+        'users_gifts_index': {
             'static': {},
             'innerHTML_regexp': [],
             'regexp': [
@@ -1735,8 +1746,7 @@ const I18N = {
             ],
             'selector': [],
         },
-
-        'users_signups': { // 用户报名的挑战
+        'users_signups': {
             'static': {
                 'Challenge Sign-ups': '挑战活动报名'
             },
@@ -1746,7 +1756,28 @@ const I18N = {
             ],
             'selector': []
         },
-
+            'users_stats': {
+                'static': {
+                    'Navigation and Sorting': '导航与排序',
+                    'Stats': '数据统计',
+                    'All Years': '所有年份',
+                    'Totals': '总计',
+                    'User Subscriptions:': '用户订阅:',
+                    'Comment Threads:': '评论串:',
+                    'Subscriptions:': '作品订阅:',
+                    'View Sorting and Actions': '视图排序与操作',
+                    'Fandoms View': '同人圈视图',
+                    'Flat View': '平铺视图',
+                    'Listing Statistics': '列表统计',
+                    'Comment Threads': '评论串',
+                    'Subscriptions': '作品订阅'
+                },
+                'innerHTML_regexp': [
+                    ['span.words', /^\(([\d,]+)\s+words\)$/s, '（$1 字）']
+                ],
+                'regexp': [],
+                'selector': []
+            },
         'works_index': {
             'static': {},
             'innerHTML_regexp': [],
@@ -2347,7 +2378,7 @@ const I18N = {
                 'Brevity is the soul of wit, but we need your comment to have text in it.': '简洁乃智慧之魂，但您的评论必须包含文字内容。',
             },
             'innerHTML_regexp': [
-                ['h4.heading', /^\s*Comment as (<span class="byline">.*?<\/span>)/, '以 $1 身份发表评论'],
+                ['h4.heading', /^\s*Comment as (<span class="byline">.*?<\/span>)/, '以 $1 的身份发表评论'],
                 ['p.character_counter', /(<span[^>]*>\d+<\/span>)\s*characters left/, '剩余 $1 字符'],
                 [
                     'ul.actions a',
@@ -2420,7 +2451,7 @@ const I18N = {
                     /^\s*This work was removed from your <a href="([^"]*)">Marked for Later list<\/a>\.\s*$/s,
                     '此作品已从您的 <a href="$1">稍后阅读列表</a> 中移除。'
                 ],
-                ['h4.heading', /^\s*Comment as (<span class="byline">.*?<\/span>)/, '以 $1 身份发表评论'],
+                ['h4.heading', /^\s*Comment as (<span class="byline">.*?<\/span>)/, '以 $1 的身份发表评论'],
                 ['p.character_counter', /(<span[^>]*>\d+<\/span>)\s*characters left/, '剩余 $1 字符'],
                 ['h3.title', /<a (.*?)>Chapter (\d+)<\/a>:\s*(.*)/s, '<a $1>第 $2 章</a>: $3'],
                 ['h3.title', /<a (.*?)>Chapter (\d+)<\/a>/s, '<a $1>第 $2 章</a>'],
@@ -5526,15 +5557,22 @@ function translateTOSPrompt() {
  */
 function translateSortButtons() {
     const translations = {
+        'Bookmarks': '书签',
+        'Comment Threads': '评论串',
+        'Date': '日期',
         'Fandom': '同人圈',
+        'Hits': '点击',
+        'Kudos': '点赞',
         'Prompter': '梗提供者',
-        'Date': '日期'
+        'Subscriptions': '作品订阅',
+        'Word Count': '字数统计'
     };
     const sortButtons = document.querySelectorAll('a[title="sort up"], a[title="sort down"]');
     sortButtons.forEach(button => {
         if (button.hasAttribute('data-translated-by-custom-function')) {
             return;
         }
+
         let currentHTML = button.innerHTML;
         let isTranslated = false;
         for (const key in translations) {
@@ -5543,6 +5581,16 @@ function translateSortButtons() {
                 isTranslated = true;
             }
         }
+
+        const title = button.getAttribute('title');
+        if (title === 'sort up') {
+            button.setAttribute('title', '升序');
+            isTranslated = true;
+        } else if (title === 'sort down') {
+            button.setAttribute('title', '降序');
+            isTranslated = true;
+        }
+
         if (isTranslated) {
             button.innerHTML = currentHTML;
             button.setAttribute('data-translated-by-custom-function', 'true');
@@ -5778,4 +5826,113 @@ function translateKudosSection() {
 	if (initialP) {
 		translateParagraphContent(initialP);
 	}
+}
+
+    /**
+ * 翻译统计图表
+ */
+function translateStatsChart() {
+    const chartContainer = document.getElementById('stat_chart');
+    if (!chartContainer || chartContainer.dataset.chartObserverAttached === 'true') {
+        return;
+    }
+
+    const translateSVGText = (svg) => {
+        const textElements = svg.querySelectorAll('text');
+        if (textElements.length === 0) {
+            return false;
+        }
+
+        const translations = {
+            'Hits': '点击量',
+            'Kudos': '点赞数',
+            'Comment Threads': '评论串',
+            'Comment Thread Count': '评论串数',
+            'Bookmarks': '书签',
+            'Subscriptions': '作品订阅',
+            'Word Count': '字数',
+            'Most Recent': '最近发布',
+            'Oldest': '最早发布'
+        };
+
+        const titleRegex = /^(Top|Bottom) Five By (.+)$/;
+        let wordCountElements = [];
+
+        textElements.forEach(textEl => {
+            const originalText = textEl.textContent.trim();
+            if (!originalText) return;
+
+            if (originalText === 'Word') {
+                wordCountElements.push(textEl);
+                return;
+            }
+
+            if (wordCountElements.length > 0) {
+                const cleanedCountText = originalText.replace(/\u2026|\.\.\.$/, '');
+                if ('Count'.startsWith(cleanedCountText)) {
+                    const wordEl = wordCountElements.pop();
+                    const wordY = parseFloat(wordEl.getAttribute('y'));
+                    const countY = parseFloat(textEl.getAttribute('y'));
+                    if (Math.abs(wordY - countY) < 20) {
+                        wordEl.textContent = '字数';
+                        textEl.textContent = '';
+                    }
+                    return;
+                }
+            }
+
+            const titleMatch = originalText.match(titleRegex);
+            if (titleMatch) {
+                const direction = titleMatch[1] === 'Top' ? '前五' : '后五';
+                const categoryKey = titleMatch[2];
+                const category = translations[categoryKey] || categoryKey;
+                textEl.textContent = `按${category}排名${direction}`;
+                return;
+            }
+
+            if (translations[originalText]) {
+                textEl.textContent = translations[originalText];
+                return;
+            }
+
+                const cleanedText = originalText.replace(/\u2026|\.\.\.$/, '');
+                if (cleanedText === '') {
+                    return;
+                }
+
+                if (cleanedText !== originalText) {
+                    for (const fullWord in translations) {
+                        if (fullWord.startsWith(cleanedText)) {
+                            textEl.textContent = translations[fullWord];
+                            return;
+                        }
+                    }
+                }
+        });
+        return true;
+    };
+
+    const observer = new MutationObserver((mutationsList, obs) => {
+        for (const mutation of mutationsList) {
+            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                const svg = chartContainer.querySelector('svg');
+                if (svg) {
+                    if (translateSVGText(svg)) {
+                        obs.disconnect();
+                        return;
+                    }
+                }
+            }
+        }
+    });
+
+    observer.observe(chartContainer, { childList: true, subtree: true });
+    chartContainer.dataset.chartObserverAttached = 'true';
+
+    const initialSvg = chartContainer.querySelector('svg');
+    if (initialSvg) {
+        if (translateSVGText(initialSvg)) {
+            observer.disconnect();
+        }
+    }
 }
