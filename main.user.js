@@ -2,7 +2,7 @@
 // @name         AO3 汉化插件
 // @namespace    https://github.com/V-Lipset/ao3-chinese
 // @description  中文化 AO3 界面，可调用 AI 实现简介、注释、评论以及全文翻译。
-// @version      1.5.5-2025-10-12
+// @version      1.5.6-2025-10-16
 // @author       V-Lipset
 // @license      GPL-3.0
 // @match        https://archiveofourown.org/*
@@ -1400,6 +1400,12 @@ Your task is to translate a numbered list of text segments provided by the user.
             .data-sync-action-btn:focus {
                 outline: none;
             }
+
+            .settings-action-button-inline,
+            .online-glossary-delete-btn,
+            .custom-dropdown-menu li .item-action-btn,
+            .data-sync-action-btn,
+            #swap-lang-btn,
             div.translate-me-ao3-wrapper > div {
                 -webkit-tap-highlight-color: transparent;
                 outline: none;
@@ -6133,75 +6139,77 @@ Your task is to translate a numbered list of text segments provided by the user.
             }
         }
 
-        function processSinglePartTerm(term, translation, type, isLocal, timestamp, source, originalTerm) {
-            const normalizedTerm = term.trim();
-            if (!normalizedTerm) return;
+		function processSinglePartTerm(term, translation, type, isLocal, timestamp, source, originalTerm) {
+			const normalizedTerm = term.trim();
+			if (!normalizedTerm) return;
 
-            if (termSeparatorRegex.test(normalizedTerm)) {
-                processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm, false);
-                return;
-            }
+			const isGeneral = type.includes('GENERAL');
+			const isForbidden = type.includes('FORBIDDEN');
 
-            const isForbidden = type.includes('FORBIDDEN');
-            const forms = generateWordForms(normalizedTerm, { preserveCase: isForbidden });
+			if (termSeparatorRegex.test(normalizedTerm)) {
+				processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm, false);
+				return;
+			}
 
-            if (isLocal || !processedLocalKeys.has(normalizedTerm.toLowerCase())) {
-                addRule({ termForms: forms, translation, type, isLocal, timestamp, source, originalTerm, isMultiPart: false, isGeneral: type.includes('GENERAL') });
-                if (isLocal) {
-                    forms.forEach(f => processedLocalKeys.add(f.toLowerCase()));
-                }
-            }
-        }
+			const forms = generateWordForms(normalizedTerm, { preserveCase: isForbidden, forceLowerCase: isGeneral });
 
-        function processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm, isFromEqualsSyntax) {
-            const normalizedTerm = term.trim();
-            const isForbidden = type.includes('FORBIDDEN');
-            const normalizedTranslation = !isForbidden ? translation.trim() : null;
+			if (isLocal || !processedLocalKeys.has(normalizedTerm.toLowerCase())) {
+				addRule({ termForms: forms, translation, type, isLocal, timestamp, source, originalTerm, isMultiPart: false, isGeneral: isGeneral });
+				if (isLocal) {
+					forms.forEach(f => processedLocalKeys.add(f.toLowerCase()));
+				}
+			}
+		}
 
-            if (!normalizedTerm || (!normalizedTranslation && !isForbidden)) return;
+		function processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm, isFromEqualsSyntax) {
+			const normalizedTerm = term.trim();
+			const isForbidden = type.includes('FORBIDDEN');
+			const normalizedTranslation = !isForbidden ? translation.trim() : null;
 
-            const termParts = normalizedTerm.split(termSeparatorRegex);
-            if (termParts.length <= 1 && !isFromEqualsSyntax) {
-                processSinglePartTerm(term, translation, type, isLocal, timestamp, source, originalTerm);
-                return;
-            }
+			if (!normalizedTerm || (!normalizedTranslation && !isForbidden)) return;
 
-            if (isLocal && processedLocalKeys.has(normalizedTerm.toLowerCase())) return;
-            if (!isLocal && processedLocalKeys.has(normalizedTerm.toLowerCase())) return;
+			const termParts = normalizedTerm.split(termSeparatorRegex);
+			if (termParts.length <= 1 && !isFromEqualsSyntax) {
+				processSinglePartTerm(term, translation, type, isLocal, timestamp, source, originalTerm);
+				return;
+			}
 
-            const isGeneral = type.includes('GENERAL');
-            const termPartsWithForms = termParts.map(part =>
-                Array.from(generateWordForms(part, { preserveCase: isForbidden || isGeneral }))
-            );
+			if (isLocal && processedLocalKeys.has(normalizedTerm.toLowerCase())) return;
+			if (!isLocal && processedLocalKeys.has(normalizedTerm.toLowerCase())) return;
 
-            const isUnorderedEligible = isFromEqualsSyntax && (type === 'LOCAL_TERM' || type === 'ONLINE_TERM');
+			const isGeneral = type.includes('GENERAL');
+			const termPartsWithForms = termParts.map(part =>
+				Array.from(generateWordForms(part, { preserveCase: isForbidden, forceLowerCase: isGeneral }))
+			);
 
-            addRule({
-                termForms: termPartsWithForms,
-                translation: normalizedTranslation,
-                type,
-                isLocal,
-                timestamp,
-                source,
-                originalTerm: originalTerm,
-                isMultiPart: true,
-                isGeneral,
-                isUnordered: isUnorderedEligible
-            });
+			const isUnorderedEligible = isFromEqualsSyntax && (type === 'LOCAL_TERM' || type === 'ONLINE_TERM');
 
-            if (!isForbidden && isFromEqualsSyntax) {
-                const translationParts = normalizedTranslation.split(/[\s·・]+/);
-                if (termParts.length === translationParts.length) {
-                    termParts.forEach((part, i) => {
-                        processSinglePartTerm(part, translationParts[i], type, isLocal, timestamp, source, `${part} -> ${translationParts[i]} (from: ${originalTerm})`);
-                    });
-                }
-            }
+			addRule({
+				termForms: termPartsWithForms,
+				translation: normalizedTranslation,
+				type,
+				isLocal,
+				timestamp,
+				source,
+				originalTerm: originalTerm,
+				isMultiPart: true,
+				isGeneral,
+				isUnordered: isUnorderedEligible
+			});
 
-            if (isLocal) {
-                processedLocalKeys.add(normalizedTerm.toLowerCase());
-            }
-        }
+			if (!isForbidden && isFromEqualsSyntax) {
+				const translationParts = normalizedTranslation.split(/[\s·・]+/);
+				if (termParts.length === translationParts.length) {
+					termParts.forEach((part, i) => {
+						processSinglePartTerm(part, translationParts[i], type, isLocal, timestamp, source, `${part} -> ${translationParts[i]} (from: ${originalTerm})`);
+					});
+				}
+			}
+
+			if (isLocal) {
+				processedLocalKeys.add(normalizedTerm.toLowerCase());
+			}
+		}
 
         localForbiddenTerms.forEach(term => {
             processSinglePartTerm(term, null, 'LOCAL_FORBIDDEN', true, 0, '本地禁翻', term);
@@ -6270,11 +6278,11 @@ Your task is to translate a numbered list of text segments provided by the user.
         return rules;
     }
 
-    /**
+	/**
      * 为单个英文单词生成其常见词形变体
      */
     function generateWordForms(baseTerm, options = {}) {
-        const { preserveCase = false } = options;
+        const { preserveCase = false, forceLowerCase = false } = options;
         const forms = new Set();
         if (!baseTerm || typeof baseTerm !== 'string') {
             return forms;
@@ -6312,6 +6320,13 @@ Your task is to translate a numbered list of text segments provided by the user.
         }
 
         forms.add(pluralForm);
+
+        if (forceLowerCase) {
+            const lowerCaseForms = new Set();
+            forms.forEach(form => lowerCaseForms.add(form.toLowerCase()));
+            return lowerCaseForms;
+        }
+
         return forms;
     }
 
@@ -7269,6 +7284,7 @@ Your task is to translate a numbered list of text segments provided by the user.
                     if (p2 && p3 === 'pseuds' && p5 === 'works') return 'users_common';
                     if (p2 && (p3 === 'blocked' || p3 === 'muted') && p4 === 'users') return 'users_block_mute_list';
                     if (p2 && p3 === 'dashboard') return 'dashboard';
+                    if (p2 && p3 === 'profile' && p4 === 'edit') return 'users_settings';
                     if (p2 && p3 === 'profile') return 'profile';
                     if (p2 && p3 === 'stats') return 'users_stats';
                     if (p2 && p3 === 'readings') return 'users_history';
