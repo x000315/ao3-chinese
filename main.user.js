@@ -2,7 +2,7 @@
 // @name         AO3 汉化插件
 // @namespace    https://github.com/V-Lipset/ao3-chinese
 // @description  中文化 AO3 界面，可调用 AI 实现简介、注释、评论以及全文翻译。
-// @version      1.5.6-2025-10-16
+// @version      1.5.7-2025-10-16
 // @author       V-Lipset
 // @license      GPL-3.0
 // @match        https://archiveofourown.org/*
@@ -4817,6 +4817,15 @@ Your task is to translate a numbered list of text segments provided by the user.
 
         const regexRules = rules.filter(r => r.matchStrategy === 'regex');
         if (regexRules.length > 0) {
+            const groupedRules = regexRules.reduce((acc, rule) => {
+                const flags = rule.regex.flags;
+                if (!acc[flags]) {
+                    acc[flags] = [];
+                }
+                acc[flags].push(rule);
+                return acc;
+            }, {});
+
             const walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT, {
                 acceptNode: (node) => {
                     if (node.parentElement.closest('[data-glossary-applied="true"]')) {
@@ -4825,46 +4834,58 @@ Your task is to translate a numbered list of text segments provided by the user.
                     return NodeFilter.FILTER_ACCEPT;
                 }
             });
-            const textNodes = [];
+
+            const nodesToProcess = [];
             let n;
-            while (n = walker.nextNode()) textNodes.push(n);
+            while (n = walker.nextNode()) {
+                nodesToProcess.push(n);
+            }
 
-            const combinedRegex = new RegExp(regexRules.map(r => `(${r.regex.source})`).join('|'), 'g');
+            while (nodesToProcess.length > 0) {
+                const currentNode = nodesToProcess.shift();
+                if (!currentNode.parentNode) continue;
 
-            textNodes.forEach(node => {
-                if (!node.parentNode) return;
+                let nodeWasReplaced = false;
 
-                const text = node.nodeValue;
-                const matches = Array.from(text.matchAll(combinedRegex));
+                for (const flags in groupedRules) {
+                    const rulesInGroup = groupedRules[flags];
+                    const combinedPattern = rulesInGroup.map(r => `(${r.regex.source})`).join('|');
+                    const combinedRegex = new RegExp(combinedPattern, flags);
 
-                if (matches.length > 0) {
-                    const fragment = document.createDocumentFragment();
-                    let lastIndex = 0;
+                    const text = currentNode.nodeValue;
+                    if (!text) continue;
 
-                    matches.forEach(match => {
+                    const match = combinedRegex.exec(text);
+                    if (match) {
+                        const fragment = document.createDocumentFragment();
                         const matchedText = match[0];
                         const matchIndex = match.index;
 
-                        if (matchIndex > lastIndex) {
-                            fragment.appendChild(document.createTextNode(text.substring(lastIndex, matchIndex)));
+                        if (matchIndex > 0) {
+                            fragment.appendChild(document.createTextNode(text.substring(0, matchIndex)));
                         }
 
                         const ruleIndex = match.slice(1).findIndex(g => g !== undefined);
-                        const rule = regexRules[ruleIndex];
+                        const rule = rulesInGroup[ruleIndex];
 
                         const placeholderNode = _applyRuleToTextMatch(matchedText, rule, placeholders, placeholderCache, engineName);
                         fragment.appendChild(placeholderNode);
 
-                        lastIndex = matchIndex + matchedText.length;
-                    });
+                        if (matchIndex + matchedText.length < text.length) {
+                            fragment.appendChild(document.createTextNode(text.substring(matchIndex + matchedText.length)));
+                        }
 
-                    if (lastIndex < text.length) {
-                        fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
+                        const newNodes = Array.from(fragment.childNodes).filter(n => n.nodeType === Node.TEXT_NODE && n.nodeValue);
+                        if (newNodes.length > 0) {
+                            nodesToProcess.unshift(...newNodes);
+                        }
+
+                        currentNode.parentNode.replaceChild(fragment, currentNode);
+                        nodeWasReplaced = true;
+                        break; 
                     }
-
-                    node.parentNode.replaceChild(fragment, node);
                 }
-            });
+            }
         }
         return clone;
     }
@@ -6082,6 +6103,11 @@ Your task is to translate a numbered list of text segments provided by the user.
         let rules = [];
         const processedLocalKeys = new Set();
 
+        if (DEBUG_MODE) {
+            console.group('[调试日志] 术语表规则构建全流程');
+            console.log('开始构建术语表规则...');
+        }
+
         const PRIORITY = {
             LOCAL_FORBIDDEN: 60000,
             LOCAL_TERM: 50000,
@@ -6100,7 +6126,7 @@ Your task is to translate a numbered list of text segments provided by the user.
             if (basePriority === undefined) return;
 
             const lengthFactor = isMultiPart
-                ? termForms.map(forms => Array.from(forms)[0]).join(' ').length
+                ? termForms.map(partForms => Array.from(partForms)[0]).join(' ').length
                 : Array.from(termForms)[0].length;
             const priority = basePriority + timestamp + lengthFactor;
 
@@ -6118,7 +6144,7 @@ Your task is to translate a numbered list of text segments provided by the user.
                     ruleObject = {
                         type: isForbidden ? 'forbidden' : 'term', matchStrategy: 'dom',
                         parts: termForms,
-                        replacement: isForbidden ? termForms.map(forms => Array.from(forms)[0]).join(' ') : translation,
+                        replacement: isForbidden ? termForms.map(partForms => Array.from(partForms)[0]).join(' ') : translation,
                         priority, isGeneral, source, originalTerm, isUnordered
                     };
                 } else {
@@ -6139,83 +6165,95 @@ Your task is to translate a numbered list of text segments provided by the user.
             }
         }
 
-		function processSinglePartTerm(term, translation, type, isLocal, timestamp, source, originalTerm) {
-			const normalizedTerm = term.trim();
-			if (!normalizedTerm) return;
+        function processSinglePartTerm(term, translation, type, isLocal, timestamp, source, originalTerm) {
+            const normalizedTerm = term.trim();
+            if (!normalizedTerm) return;
 
-			const isGeneral = type.includes('GENERAL');
-			const isForbidden = type.includes('FORBIDDEN');
+            const isGeneral = type.includes('GENERAL');
+            const isForbidden = type.includes('FORBIDDEN');
 
-			if (termSeparatorRegex.test(normalizedTerm)) {
-				processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm, false);
-				return;
-			}
+            if (termSeparatorRegex.test(normalizedTerm)) {
+                processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm, false);
+                return;
+            }
 
-			const forms = generateWordForms(normalizedTerm, { preserveCase: isForbidden, forceLowerCase: isGeneral });
+            const forms = generateWordForms(normalizedTerm, { preserveCase: isForbidden, forceLowerCase: isGeneral });
 
-			if (isLocal || !processedLocalKeys.has(normalizedTerm.toLowerCase())) {
-				addRule({ termForms: forms, translation, type, isLocal, timestamp, source, originalTerm, isMultiPart: false, isGeneral: isGeneral });
-				if (isLocal) {
-					forms.forEach(f => processedLocalKeys.add(f.toLowerCase()));
-				}
-			}
-		}
+            if (DEBUG_MODE && /anija/i.test(normalizedTerm)) {
+                console.log(`[词条处理] 正在处理词条: "${normalizedTerm}" (类型: ${type})`);
+                console.log(`  - 生成的词形变体 (forms):`, forms);
+            }
 
-		function processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm, isFromEqualsSyntax) {
-			const normalizedTerm = term.trim();
-			const isForbidden = type.includes('FORBIDDEN');
-			const normalizedTranslation = !isForbidden ? translation.trim() : null;
+            if (isLocal || !processedLocalKeys.has(normalizedTerm.toLowerCase())) {
+                addRule({ termForms: forms, translation, type, isLocal, timestamp, source, originalTerm, isMultiPart: false, isGeneral: isGeneral });
+                if (isLocal) {
+                    forms.forEach(f => processedLocalKeys.add(f.toLowerCase()));
+                }
+            }
+        }
 
-			if (!normalizedTerm || (!normalizedTranslation && !isForbidden)) return;
+        function processMultiPartTerm(term, translation, type, isLocal, timestamp, source, originalTerm, isFromEqualsSyntax) {
+            const normalizedTerm = term.trim();
+            const isForbidden = type.includes('FORBIDDEN');
+            const normalizedTranslation = !isForbidden ? translation.trim() : null;
 
-			const termParts = normalizedTerm.split(termSeparatorRegex);
-			if (termParts.length <= 1 && !isFromEqualsSyntax) {
-				processSinglePartTerm(term, translation, type, isLocal, timestamp, source, originalTerm);
-				return;
-			}
+            if (!normalizedTerm || (!normalizedTranslation && !isForbidden)) return;
 
-			if (isLocal && processedLocalKeys.has(normalizedTerm.toLowerCase())) return;
-			if (!isLocal && processedLocalKeys.has(normalizedTerm.toLowerCase())) return;
+            const termParts = normalizedTerm.split(termSeparatorRegex);
+            if (termParts.length <= 1 && !isFromEqualsSyntax) {
+                processSinglePartTerm(term, translation, type, isLocal, timestamp, source, originalTerm);
+                return;
+            }
 
-			const isGeneral = type.includes('GENERAL');
-			const termPartsWithForms = termParts.map(part =>
-				Array.from(generateWordForms(part, { preserveCase: isForbidden, forceLowerCase: isGeneral }))
-			);
+            if (isLocal && processedLocalKeys.has(normalizedTerm.toLowerCase())) return;
+            if (!isLocal && processedLocalKeys.has(normalizedTerm.toLowerCase())) return;
 
-			const isUnorderedEligible = isFromEqualsSyntax && (type === 'LOCAL_TERM' || type === 'ONLINE_TERM');
+            const isGeneral = type.includes('GENERAL');
+            const termPartsWithForms = termParts.map(part =>
+                Array.from(generateWordForms(part, { preserveCase: isForbidden, forceLowerCase: isGeneral }))
+            );
 
-			addRule({
-				termForms: termPartsWithForms,
-				translation: normalizedTranslation,
-				type,
-				isLocal,
-				timestamp,
-				source,
-				originalTerm: originalTerm,
-				isMultiPart: true,
-				isGeneral,
-				isUnordered: isUnorderedEligible
-			});
+            if (DEBUG_MODE && /anija/i.test(normalizedTerm)) {
+                console.log(`[词条处理] 正在处理多部分词条: "${normalizedTerm}" (类型: ${type})`);
+                console.log(`  - 生成的各部分词形变体 (termPartsWithForms):`, termPartsWithForms);
+            }
 
-			if (!isForbidden && isFromEqualsSyntax) {
-				const translationParts = normalizedTranslation.split(/[\s·・]+/);
-				if (termParts.length === translationParts.length) {
-					termParts.forEach((part, i) => {
-						processSinglePartTerm(part, translationParts[i], type, isLocal, timestamp, source, `${part} -> ${translationParts[i]} (from: ${originalTerm})`);
-					});
-				}
-			}
+            const isUnorderedEligible = isFromEqualsSyntax && (type === 'LOCAL_TERM' || type === 'ONLINE_TERM');
 
-			if (isLocal) {
-				processedLocalKeys.add(normalizedTerm.toLowerCase());
-			}
-		}
+            addRule({
+                termForms: termPartsWithForms,
+                translation: normalizedTranslation,
+                type,
+                isLocal,
+                timestamp,
+                source,
+                originalTerm: originalTerm,
+                isMultiPart: true,
+                isGeneral,
+                isUnordered: isUnorderedEligible
+            });
 
+            if (!isForbidden && isFromEqualsSyntax) {
+                const translationParts = normalizedTranslation.split(/[\s·・]+/);
+                if (termParts.length === translationParts.length) {
+                    termParts.forEach((part, i) => {
+                        processSinglePartTerm(part, translationParts[i], type, isLocal, timestamp, source, `${part} -> ${translationParts[i]} (from: ${originalTerm})`);
+                    });
+                }
+            }
+
+            if (isLocal) {
+                processedLocalKeys.add(normalizedTerm.toLowerCase());
+            }
+        }
+
+        if (DEBUG_MODE) console.log('阶段1: 处理本地禁翻词条...');
         localForbiddenTerms.forEach(term => {
             processSinglePartTerm(term, null, 'LOCAL_FORBIDDEN', true, 0, '本地禁翻', term);
         });
 
         if (localGlossaryString.trim()) {
+            if (DEBUG_MODE) console.log('阶段2: 处理本地术语表...');
             localGlossaryString.replace(/[，,]/g, '|||').split('|||').forEach(entry => {
                 const normalizedEntry = entry.replace(/[：＝]/g, (match) => ({ '：': ':', '＝': '=' }[match]));
                 const multiPartMatch = normalizedEntry.match(/^\s*(.+?)\s*=\s*(.+?)\s*$/);
@@ -6238,11 +6276,13 @@ Your task is to translate a numbered list of text segments provided by the user.
                 return timeB - timeA;
             });
 
+        if (DEBUG_MODE) console.log('阶段3: 处理在线术语表...');
         sortedOnlineGlossaryUrls.forEach((url, index) => {
             const g = allImportedGlossaries[url];
             if (!g) return;
             const timestamp = index * 0.001;
             const sourceName = `在线: ${decodeURIComponent(url.split('/').pop())}`;
+            if (DEBUG_MODE) console.log(`  - 正在加载: ${sourceName}`);
 
             (g.forbiddenTerms || []).forEach(term => processSinglePartTerm(term, null, 'ONLINE_FORBIDDEN', false, timestamp, sourceName, term));
             Object.entries(g.terms || {}).forEach(([k, v]) => processSinglePartTerm(k, v, 'ONLINE_TERM', false, timestamp, sourceName, `${k}:${v}`));
@@ -6256,6 +6296,7 @@ Your task is to translate a numbered list of text segments provided by the user.
             });
         });
 
+        if (DEBUG_MODE) console.log('阶段4: 排序所有规则...');
         rules.sort((a, b) => b.priority - a.priority);
 
         const currentStateHash = generateGlossaryStateHash();
@@ -6272,7 +6313,9 @@ Your task is to translate a numbered list of text segments provided by the user.
         });
 
         if (DEBUG_MODE) {
-            console.log('[缓存管理] 术语表规则已重建并存入缓存。');
+            console.groupCollapsed(`构建完成，共 ${rules.length} 条规则。`);
+            console.log('最终排序后的规则列表:', rules);
+            console.groupEnd();
         }
 
         return rules;
