@@ -1,5 +1,5 @@
 // 元数据区
-版本号：1.0.3
+版本号：1.0.4
 维护者：x000315
 更新时间：2025-10-24
 
@@ -83,10 +83,7 @@ Zac：阿扎
 Hero Affairs Commission：联合会
 H.A.C：联合会
 Treeman：树人
-MG：MG
 Mighty Glory：MG
-DOS：DOS
-FOMO：FOMO
 Spotlight：聚光灯
 The Spotlight Organization：聚光灯组织
 Glimmer Lab：微光实验室
@@ -97,8 +94,8 @@ Glimmer Lab：微光实验室
 // 赌城特区在英文百科里被误写成京城Jingcheng了，不知道官方英文到底是哪一个，按照官方地图上写的都翻成赌城。
 
 the commission：联合会
-trust value：信赖值
 hero agency：英雄事务所
+trust value：信赖值
 fear value：恐惧值
 Heroes Tournament：英雄排位赛
 Ruins Incident：废墟事件
@@ -112,3 +109,9 @@ Chengxi Zone：城西地区
 Jingcheng Special Zone：赌城特区
 Ducheng Special Zone：赌城特区
 Western Suburbs：城西郊区
+
+禁翻词条
+
+MG
+DOS
+FOMO
