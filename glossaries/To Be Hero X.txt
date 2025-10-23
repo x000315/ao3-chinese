@@ -1,5 +1,4 @@
-// 元数据区
-版本号：1.0.4
+版本号：1.0.5
 维护者：x000315
 更新时间：2025-10-24
 
@@ -84,13 +83,12 @@ Hero Affairs Commission：联合会
 H.A.C：联合会
 Treeman：树人
 Mighty Glory：MG
-Spotlight：聚光灯
-The Spotlight Organization：聚光灯组织
+Spotlight：探照灯
+The Spotlight Organization：探照灯组织
 Glimmer Lab：微光实验室
 
 通用词条
 
-// 此区域不区分大小写，用于翻译通用概念
 // 赌城特区在英文百科里被误写成京城Jingcheng了，不知道官方英文到底是哪一个，按照官方地图上写的都翻成赌城。
 
 the commission：联合会
