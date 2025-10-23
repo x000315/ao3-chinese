@@ -1,5 +1,5 @@
 维护者：x000315
-版本号：1.0.7
+版本号：1.0.8
 更新时间：2025-10-24
 
 词条
@@ -9,6 +9,7 @@ X：X
 Queen：女王
 Liu Yuwei = 刘 宇唯
 Dragon Boy：梁龙
+Liang Long = 梁 龙
 Ghostblade：默杀
 Ghost Blade：默杀
 Wang Yi = 王 一
