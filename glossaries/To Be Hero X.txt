@@ -1,5 +1,5 @@
 // 元数据区
-版本号：1.0.0
+版本号：1.0.1
 维护者：x000315
 更新时间：2025-10-24
 
@@ -53,7 +53,7 @@ Ms. Blazing Fire：烈火
 Da Xiong：大雄
 Wang Nuonuo = 王 诺诺
 Luo Tong = 罗 同
-DJ Shindig：英雄狂欢
+DJ Shindig：狂欢
 Zhang Lan = 张 兰
 Ah Sheng = 阿 生
 Vortex：旋涡
@@ -68,6 +68,7 @@ Bug：霸格
 Graffiti King：涂鸦王
 The Ruby-Sapphire Master：丹苍二老
 Nine：Nine
+NINE：NINE
 
 // 老闆
 Shang De = 尚 德
@@ -86,6 +87,7 @@ Mighty Glory：MG
 DOS：DOS
 FOMO：FOMO
 Spotlight：聚光灯
+The Spotlight Organization：聚光灯组织
 Glimmer Lab：微光实验室
 
 通用词条
