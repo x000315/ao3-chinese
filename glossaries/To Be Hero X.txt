@@ -1,5 +1,5 @@
 // 元数据区
-版本号：1.0.2
+版本号：1.0.3
 维护者：x000315
 更新时间：2025-10-24
 
@@ -94,7 +94,7 @@ Glimmer Lab：微光实验室
 通用词条
 
 // 此区域不区分大小写，用于翻译通用概念
-// 赌城特区在英文百科里被误写成Jingcheng了，按照官方写的都翻成赌城。
+// 赌城特区在英文百科里被误写成京城Jingcheng了，不知道官方英文到底是哪一个，按照官方地图上写的都翻成赌城。
 
 the commission：联合会
 trust value：信赖值
@@ -106,11 +106,9 @@ X City：X市
 Center 11 Districts：中心11区
 Chengbei Zone：城北地区
 Chengdong Zone：城东地区
-Chengdong Bay Zone：城东港区
+Chengdong Bay Zone：城东湾区
 Chengnan Zone：城南地区
 Chengxi Zone：城西地区
 Jingcheng Special Zone：赌城特区
-Ducheng Special Zone：赌城特区
-Western Suburbs：城西郊区
 Ducheng Special Zone：赌城特区
 Western Suburbs：城西郊区
