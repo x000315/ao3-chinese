@@ -1,5 +1,5 @@
 维护者：x000315
-版本号：1.0.8
+版本号：1.0.9
 更新时间：2025-10-24
 
 词条
@@ -15,6 +15,7 @@ Ghost Blade：默杀
 Wang Yi = 王 一
 Little Johnny：小强
 Big Johnny：大强
+The Johnnies：大小强
 Loli：罗莉
 Luo Li = 罗莉
 Lucky Cyan：幸运青
