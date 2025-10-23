@@ -1,5 +1,5 @@
 维护者：x000315
-版本号：1.0.9
+版本号：1.0.10
 更新时间：2025-10-24
 
 词条
@@ -17,7 +17,7 @@ Little Johnny：小强
 Big Johnny：大强
 The Johnnies：大小强
 Loli：罗莉
-Luo Li = 罗莉
+Luo Li = 罗 莉
 Lucky Cyan：幸运青
 Cyan：小青
 A-hu：阿虎
