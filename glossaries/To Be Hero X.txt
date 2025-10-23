@@ -1,5 +1,5 @@
 维护者：x000315
-版本号：1.0.10
+版本号：1.0.11
 更新时间：2025-10-24
 
 词条
@@ -39,6 +39,7 @@ Qi shi：启士
 Eye of Truth：启士
 God Eye：天眼
 Wreck：破坏王
+Firm Man：不倒
 BuDao：不倒
 Magic Shadow：魔影
 Crash：沖撞
