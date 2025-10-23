@@ -1,5 +1,5 @@
 维护者：x000315
-版本号：1.0.6
+版本号：1.0.7
 更新时间：2025-10-24
 
 词条
@@ -31,6 +31,7 @@ Cheng Yaojin = 程 咬金
 Xiao Yueqing = 潇 月卿
 Moon：潇月卿
 Miss J：娟姐
+sister Juan：娟姐
 Enlighter：启士
 Qi shi：启士
 Eye of Truth：启士
@@ -72,6 +73,7 @@ NINE：NINE
 // 老闆
 Shang De = 尚 德
 Mr. Shang：尚总
+Boss Shang：尚总
 Yan Mo = 岩 莫
 Rock：岩莫
 Mickey：米基
