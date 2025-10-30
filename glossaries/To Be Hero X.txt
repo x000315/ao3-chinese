@@ -1,5 +1,5 @@
 维护者：x000315
-版本号：1.0.12
+版本号：1.0.13
 更新时间：2025-10-30
 
 词条
@@ -27,8 +27,7 @@ E-Soul：魂电
 Yang Cheng = 杨 澄
 Nice：奈斯
 Lin Ling = 林 凌
-The Commoner：林凌
-the Commoner：林凌
+Commoner：林凌
 
 // 其他角色
 Cheng Yaojin = 程 咬金
