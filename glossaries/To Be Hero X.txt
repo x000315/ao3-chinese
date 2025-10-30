@@ -1,6 +1,6 @@
 维护者：x000315
-版本号：1.0.11
-更新时间：2025-10-24
+版本号：1.0.12
+更新时间：2025-10-30
 
 词条
 
@@ -15,7 +15,7 @@ Ghost Blade：默杀
 Wang Yi = 王 一
 Little Johnny：小强
 Big Johnny：大强
-The Johnnies：大小强
+Johnnies：大小强
 Loli：罗莉
 Luo Li = 罗 莉
 Lucky Cyan：幸运青
@@ -23,10 +23,12 @@ Cyan：小青
 A-hu：阿虎
 Ahu：阿虎
 E-soul：魂电
+E-Soul：魂电
 Yang Cheng = 杨 澄
 Nice：奈斯
 Lin Ling = 林 凌
-The Commoner：普通人
+The Commoner：林凌
+the Commoner：林凌
 
 // 其他角色
 Cheng Yaojin = 程 咬金
@@ -35,7 +37,7 @@ Moon：潇月卿
 Miss J：娟姐
 sister Juan：娟姐
 Enlighter：启士
-Qi shi：启士
+Qishi：启士
 Eye of Truth：启士
 God Eye：天眼
 Wreck：破坏王
@@ -91,6 +93,10 @@ Mighty Glory：MG
 Spotlight：探照灯
 The Spotlight Organization：探照灯组织
 Glimmer Lab：微光实验室
+
+//特殊名词
+Trust：信赖
+Fear：恐惧值
 
 通用词条
 
